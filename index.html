@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Map of New Brunswick</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            width: 100%;
+            font-family: Arial, sans-serif;
+            background-color: #b3e5fc; /* Slightly darker blue background */
+        }
+
+        .map-container {
+            height: 100vh;
+            width: 100%;
+            background-color: #b3e5fc; /* Slightly darker blue background */
+        }
+
+        .controls {
+            position: absolute;
+            top: 80px; /* Just under the zoom controls with more padding */
+            left: 10px;
+            background: rgba(255, 255, 255, 0.8); /* White with transparency */
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            z-index: 1000; /* Ensure controls are above map layers */
+            display: flex;
+            align-items: center;
+        }
+
+        .controls label {
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            margin-left: 10px;
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 34px;
+            height: 20px;
+            margin-right: 10px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 34px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 14px;
+            width: 14px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: #2196F3;
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(14px);
+        }
+    </style>
+</head>
+<body>
+    <div id="map" class="map-container"></div>
+    <div class="controls">
+        <label class="switch">
+            <input type="checkbox" id="toggle-roads" checked>
+            <span class="slider"></span>
+        </label>
+        <label for="toggle-roads">Roads</label>
+    </div>
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/esri-leaflet/dist/esri-leaflet.js"></script>
+    <script>
+        const COUNTY_LAYER_URL = 'https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Counties/MapServer/0';
+        const ROADS_LAYER_URL = 'https://geonb.snb.ca/arcgis/rest/services/GeoNB_Basemap_NBRN/MapServer/3';
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const map = L.map('map').setView([45.2733, -66.0633], 15); // Coordinates for Saint John, NB
+
+            // Create custom panes
+            map.createPane('countyPane');
+            map.getPane('countyPane').style.zIndex = 400;
+            map.createPane('roadsPane');
+            map.getPane('roadsPane').style.zIndex = 500;
+
+            // County Layer
+            const countyLayer = L.esri.featureLayer({
+                url: COUNTY_LAYER_URL,
+                pane: 'countyPane',
+                style: function () {
+                    return {
+                        color: '#006400',
+                        weight: 1.5,
+                        fillColor: '#00FF00',
+                        fillOpacity: 0.5
+                    };
+                }
+            }).addTo(map);
+
+            // Roads Layer
+            const roadsLayer = L.esri.featureLayer({
+                url: ROADS_LAYER_URL,
+                pane: 'roadsPane',
+                style: function () {
+                    return {
+                        color: '#000000',
+                        weight: 1.5
+                    };
+                }
+            }).addTo(map);
+
+            // Toggle Roads Layer
+            const toggleRoadsCheckbox = document.getElementById('toggle-roads');
+            toggleRoadsCheckbox.addEventListener('change', (event) => {
+                if (event.target.checked) {
+                    map.addLayer(roadsLayer);
+                } else {
+                    map.removeLayer(roadsLayer);
+                }
+            });
+
+            // Add county layer to map and set bounds
+            countyLayer.on('load', () => {
+                const bounds = countyLayer.getBounds();
+                map.fitBounds(bounds);
+                map.setMaxBounds(bounds);
+
+                // Add roads layer after county layer is loaded
+                if (toggleRoadsCheckbox.checked) {
+                    map.addLayer(roadsLayer);
+                }
+            });
+        });
+    </script>
+</body>
+</html>
