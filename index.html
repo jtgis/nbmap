@@ -23,22 +23,24 @@
 
         .controls {
             position: absolute;
-            top: 80px; /* Just under the zoom controls with more padding */
+            top: 180px; /* Just under the zoom controls with more padding */
             left: 10px;
+            width: 170px; /* Extend the transparent box to 170px from the left */
             background: rgba(255, 255, 255, 0.8); /* White with transparency */
             padding: 10px;
             border-radius: 5px;
             box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
             z-index: 1000; /* Ensure controls are above map layers */
             display: flex;
-            align-items: center;
+            flex-direction: column;
+            align-items: flex-start;
         }
 
         .controls label {
             font-size: 14px;
             display: flex;
             align-items: center;
-            margin-left: 10px;
+            margin-bottom: 5px;
         }
 
         .switch {
@@ -86,22 +88,67 @@
         input:checked + .slider:before {
             transform: translateX(14px);
         }
+
+        .icon {
+            position: absolute;
+            top: 10px; /* Align with the top of the zoom controls */
+            left: 50px; /* Adjust as needed to position to the right of the zoom controls */
+            z-index: 1000; /* Ensure the icon is above map layers */
+            height: 140px; /* 25% of the original 64px height */
+            background: rgba(255, 255, 255, 0.7); /* Semi-transparent white background */
+            border-radius: 10px; /* Rounded edges */
+            padding: 5px; /* Padding to ensure the icon is not touching the edges */
+        }
     </style>
 </head>
 <body>
     <div id="map" class="map-container"></div>
+    <img src="https://cdn.freebiesupply.com/logos/large/2x/new-brunswick-canada-logo-png-transparent.png" alt="Icon" class="icon">
     <div class="controls">
-        <label class="switch">
-            <input type="checkbox" id="toggle-roads" checked>
-            <span class="slider"></span>
-        </label>
-        <label for="toggle-roads">Roads</label>
+        <div style="display: flex; align-items: center;">
+            <input type="radio" id="none" name="basemap" value="none" checked>
+            <label for="none">None</label>
+        </div>
+        <div style="display: flex; align-items: center;">
+            <input type="radio" id="imagery" name="basemap" value="imagery">
+            <label for="imagery">Imagery</label>
+        </div>
+        <div style="display: flex; align-items: center;">
+            <input type="radio" id="terrain" name="basemap" value="terrain">
+            <label for="terrain">Terrain</label>
+        </div>
+        <div style="display: flex; align-items: center;">
+            <label class="switch">
+                <input type="checkbox" id="toggle-property-lines">
+                <span class="slider"></span>
+            </label>
+            <label for="toggle-property-lines">Property Lines</label>
+        </div>
+        <div style="display: flex; align-items: center;">
+            <label class="switch">
+                <input type="checkbox" id="toggle-buildings" checked>
+                <span class="slider"></span>
+            </label>
+            <label for="toggle-buildings">Buildings</label>
+        </div>
+        <div style="display: flex; align-items: center;">
+            <label class="switch">
+                <input type="checkbox" id="toggle-roads" checked>
+                <span class="slider"></span>
+            </label>
+            <label for="toggle-roads">Roads</label>
+        </div>
     </div>
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <script src="https://unpkg.com/esri-leaflet/dist/esri-leaflet.js"></script>
     <script>
         const COUNTY_LAYER_URL = 'https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Counties/MapServer/0';
         const ROADS_LAYER_URL = 'https://geonb.snb.ca/arcgis/rest/services/GeoNB_Basemap_NBRN/MapServer/3';
+        const WATERBODIES_LAYER_URL = 'https://gis-erd-der.gnb.ca/server/rest/services/OpenData/NBHN_Waterbody/MapServer/0';
+        const BUILDINGS_LAYER_URL = 'https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Buildings/MapServer/0';
+        const PROPERTY_LINES_LAYER_URL = 'https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Pan/MapServer/0';
+        const IMAGERY_LAYER_URL = 'http://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+        const TERRAIN_LAYER_URL = 'https://geonb.snb.ca/image/rest/services/Elevation/DEM_Raw_MNE_Brut/ImageServer';
 
         document.addEventListener('DOMContentLoaded', () => {
             const map = L.map('map').setView([45.2733, -66.0633], 15); // Coordinates for Saint John, NB
@@ -109,8 +156,18 @@
             // Create custom panes
             map.createPane('countyPane');
             map.getPane('countyPane').style.zIndex = 400;
+            map.createPane('waterbodiesPane');
+            map.getPane('waterbodiesPane').style.zIndex = 450;
+            map.createPane('imageryPane');
+            map.getPane('imageryPane').style.zIndex = 475;
+            map.createPane('terrainPane');
+            map.getPane('terrainPane').style.zIndex = 475;
             map.createPane('roadsPane');
             map.getPane('roadsPane').style.zIndex = 500;
+            map.createPane('buildingsPane');
+            map.getPane('buildingsPane').style.zIndex = 600;
+            map.createPane('propertyLinesPane');
+            map.getPane('propertyLinesPane').style.zIndex = 700;
 
             // County Layer
             const countyLayer = L.esri.featureLayer({
@@ -118,10 +175,24 @@
                 pane: 'countyPane',
                 style: function () {
                     return {
-                        color: '#006400',
-                        weight: 1.5,
-                        fillColor: '#00FF00',
-                        fillOpacity: 0.5
+                        color: '#5aed5a', // Border color matching the fill color
+                        weight: 0.69420,
+                        fillColor: '#5aed5a',
+                        fillOpacity: 1
+                    };
+                }
+            }).addTo(map);
+
+            // Waterbodies Layer
+            const waterbodiesLayer = L.esri.featureLayer({
+                url: WATERBODIES_LAYER_URL,
+                pane: 'waterbodiesPane',
+                style: function () {
+                    return {
+                        color: '#b3e5fc', // Same blue color as the background
+                        weight: 0,
+                        fillColor: '#b3e5fc',
+                        fillOpacity: 1
                     };
                 }
             }).addTo(map);
@@ -138,6 +209,44 @@
                 }
             }).addTo(map);
 
+            // Buildings Layer
+            const buildingsLayer = L.esri.featureLayer({
+                url: BUILDINGS_LAYER_URL,
+                pane: 'buildingsPane',
+                style: function () {
+                    return {
+                        color: '#ff6666', // Light red color
+                        weight: 1.5,
+                        fillColor: '#ff6666',
+                        fillOpacity: 0.7
+                    };
+                }
+            }).addTo(map);
+
+            // Property Lines Layer
+            const propertyLinesLayer = L.esri.featureLayer({
+                url: PROPERTY_LINES_LAYER_URL,
+                pane: 'propertyLinesPane',
+                style: function () {
+                    return {
+                        color: '#FFFF00', // Yellow color
+                        weight: 1.5,
+                        fillOpacity: 0
+                    };
+                }
+            });
+
+            // Imagery Layer
+            const imageryLayer = L.tileLayer(IMAGERY_LAYER_URL, {
+                pane: 'imageryPane'
+            });
+
+            // Terrain Layer
+            const terrainLayer = L.esri.imageMapLayer({
+                url: TERRAIN_LAYER_URL,
+                pane: 'terrainPane'
+            });
+
             // Toggle Roads Layer
             const toggleRoadsCheckbox = document.getElementById('toggle-roads');
             toggleRoadsCheckbox.addEventListener('change', (event) => {
@@ -148,15 +257,56 @@
                 }
             });
 
+            // Toggle Buildings Layer
+            const toggleBuildingsCheckbox = document.getElementById('toggle-buildings');
+            toggleBuildingsCheckbox.addEventListener('change', (event) => {
+                if (event.target.checked) {
+                    map.addLayer(buildingsLayer);
+                } else {
+                    map.removeLayer(buildingsLayer);
+                }
+            });
+
+            // Toggle Property Lines Layer
+            const togglePropertyLinesCheckbox = document.getElementById('toggle-property-lines');
+            togglePropertyLinesCheckbox.addEventListener('change', (event) => {
+                if (event.target.checked) {
+                    map.addLayer(propertyLinesLayer);
+                } else {
+                    map.removeLayer(propertyLinesLayer);
+                }
+            });
+
+            // Radio buttons for basemap
+            const basemapRadios = document.getElementsByName('basemap');
+            basemapRadios.forEach(radio => {
+                radio.addEventListener('change', (event) => {
+                    if (event.target.value === 'imagery') {
+                        map.addLayer(imageryLayer);
+                        map.removeLayer(terrainLayer);
+                    } else if (event.target.value === 'terrain') {
+                        map.addLayer(terrainLayer);
+                        map.removeLayer(imageryLayer);
+                    } else {
+                        map.removeLayer(imageryLayer);
+                        map.removeLayer(terrainLayer);
+                    }
+                });
+            });
+
             // Add county layer to map and set bounds
             countyLayer.on('load', () => {
                 const bounds = countyLayer.getBounds();
                 map.fitBounds(bounds);
                 map.setMaxBounds(bounds);
 
-                // Add roads layer after county layer is loaded
+                // Add waterbodies, roads, and buildings layers after county layer is loaded
+                map.addLayer(waterbodiesLayer);
                 if (toggleRoadsCheckbox.checked) {
                     map.addLayer(roadsLayer);
+                }
+                if (toggleBuildingsCheckbox.checked) {
+                    map.addLayer(buildingsLayer);
                 }
             });
         });
