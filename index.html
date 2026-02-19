@@ -208,6 +208,11 @@
         <span class="swatch" style="background:linear-gradient(135deg, #e64c00 50%, #ffaa00 50%);border:1px solid #8a6e14;"></span>
         Road Network (NBRN)
       </label>
+      <label class="layer-toggle">
+        <input type="checkbox" data-layer="railway" checked />
+        <span class="swatch" style="background:#323232;border-radius:0;"></span>
+        Railway (NRWN)
+      </label>
     </div>
 
     <div class="layer-group">
@@ -221,6 +226,15 @@
         <input type="checkbox" data-layer="buildings" checked />
         <span class="swatch" style="background:rgba(160,110,70,0.4);border:1px solid rgba(130,85,50,0.6);"></span>
         Buildings
+      </label>
+    </div>
+
+    <div class="layer-group">
+      <div class="layer-group-title">Facilities</div>
+      <label class="layer-toggle">
+        <input type="checkbox" data-layer="schools" checked />
+        <span class="swatch" style="background:#4682b4;"></span>
+        Public Schools
       </label>
     </div>
 
@@ -246,11 +260,12 @@
       "esri/layers/MapImageLayer",
       "esri/layers/FeatureLayer",
       "esri/layers/ImageryLayer",
+      "esri/layers/GroupLayer",
       "esri/widgets/ScaleBar",
       "esri/widgets/Legend",
       "esri/widgets/Expand"
     ], function (
-      Map, MapView, MapImageLayer, FeatureLayer, ImageryLayer,
+      Map, MapView, MapImageLayer, FeatureLayer, ImageryLayer, GroupLayer,
       ScaleBar, Legend, Expand
     ) {
 
@@ -292,13 +307,42 @@
       //      Subtle colour wash showing forest / wetland / cropland etc.
       //      Very low opacity so it tints without dominating.
       // ==================================================================
-      var landCoverLayer = new MapImageLayer({
+      var landCoverRaw = new MapImageLayer({
         url: "https://geoappext.nrcan.gc.ca/arcgis/rest/services/FGP/LandCover_EN/MapServer",
+        title: "Land Cover (NRCan)",
+        opacity: 1,
+        imageFormat: "png32",
+        sublayers: [{ id: 0 }]
+      });
+
+      // Mask layer — NB counties rendered as solid opaque fill;
+      // blendMode "destination-in" keeps only the land-cover pixels
+      // that overlap NB territory.
+      var nbClipMask = new MapImageLayer({
+        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Counties/MapServer",
+        title: "NB Clip Mask",
+        imageFormat: "png32",
+        blendMode: "destination-in",
+        sublayers: [{
+          id: 0,
+          renderer: {
+            type: "simple",
+            symbol: {
+              type: "simple-fill",
+              color: [0, 0, 0, 255],
+              outline: null
+            }
+          }
+        }]
+      });
+
+      // GroupLayer isolates the blend so the mask only clips
+      // the land cover, not the rest of the map.
+      var landCoverLayer = new GroupLayer({
         id: "landcover",
         title: "Land Cover (NRCan)",
         opacity: 0.15,
-        imageFormat: "png32",
-        sublayers: [{ id: 0 }]
+        layers: [landCoverRaw, nbClipMask]
       });
 
       // ==================================================================
@@ -880,6 +924,67 @@
       });
 
       // ==================================================================
+      //  6c. RAILWAY — National Railway Network (NRWN)
+      //      Classic topo-style: solid dark line for tracks,
+      //      small markers & labels for stations.
+      //      Tracks appear at 1:72 K (matching local highway detail).
+      // ==================================================================
+      var railwayLayer = new MapImageLayer({
+        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_NRWN/MapServer",
+        id: "railway",
+        title: "Railway (NRWN)",
+        imageFormat: "png32",
+        sublayers: [
+          {
+            id: 0,  // Stations
+            title: "Railway Stations",
+            minScale: 36000,
+            renderer: {
+              type: "simple",
+              symbol: {
+                type: "simple-marker",
+                size: 5,
+                color: [50, 50, 50, 255],
+                style: "circle",
+                outline: {
+                  type: "simple-line",
+                  color: [30, 30, 30, 255],
+                  width: 0.6
+                }
+              }
+            },
+            labelingInfo: [{
+              labelExpression: "[STNENNAME]",
+              labelPlacement: "above-right",
+              symbol: {
+                type: "text",
+                color: [50, 50, 50, 255],
+                haloColor: [255, 255, 255, 220],
+                haloSize: 1.0,
+                font: { size: 7, family: "Arial", weight: "normal" }
+              },
+              minScale: 24000,
+              maxScale: 0
+            }]
+          },
+          {
+            id: 5,  // Tracks
+            title: "Railway Tracks",
+            minScale: 72000,
+            renderer: {
+              type: "simple",
+              symbol: {
+                type: "simple-line",
+                color: [50, 50, 50, 200],
+                width: 1.2,
+                style: "solid"
+              }
+            }
+          }
+        ]
+      });
+
+      // ==================================================================
       //  7.  PLACE NAMES  (drawn on top of everything)
       //      Uses GeoNB_NRCan_PlaceNames — point features with name labels
       // ==================================================================
@@ -964,6 +1069,84 @@
       });
 
       // ==================================================================
+      //  10. PUBLIC SCHOOLS  (EECD — Anglophone & Francophone)
+      //      Small square markers; labels at very close zoom.
+      //      Appears at 1:36 K — a step closer than railway.
+      // ==================================================================
+      var schoolsLayer = new MapImageLayer({
+        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_EECD_PublicSchools/MapServer",
+        id: "schools",
+        title: "Public Schools",
+        imageFormat: "png32",
+        sublayers: [
+          {
+            id: 1,  // Francophone
+            title: "Francophone Schools",
+            minScale: 36000,
+            renderer: {
+              type: "simple",
+              symbol: {
+                type: "simple-marker",
+                size: 7,
+                color: [70, 130, 180, 255],
+                style: "square",
+                outline: {
+                  type: "simple-line",
+                  color: [40, 80, 130, 255],
+                  width: 0.6
+                }
+              }
+            },
+            labelingInfo: [{
+              labelExpression: "[strNM]",
+              labelPlacement: "above-right",
+              symbol: {
+                type: "text",
+                color: [40, 80, 130, 255],
+                haloColor: [255, 255, 255, 220],
+                haloSize: 1.0,
+                font: { size: 7, family: "Arial", weight: "normal" }
+              },
+              minScale: 18000,
+              maxScale: 0
+            }]
+          },
+          {
+            id: 0,  // Anglophone
+            title: "Anglophone Schools",
+            minScale: 36000,
+            renderer: {
+              type: "simple",
+              symbol: {
+                type: "simple-marker",
+                size: 7,
+                color: [70, 130, 180, 255],
+                style: "square",
+                outline: {
+                  type: "simple-line",
+                  color: [40, 80, 130, 255],
+                  width: 0.6
+                }
+              }
+            },
+            labelingInfo: [{
+              labelExpression: "[strNM]",
+              labelPlacement: "above-right",
+              symbol: {
+                type: "text",
+                color: [40, 80, 130, 255],
+                haloColor: [255, 255, 255, 220],
+                haloSize: 1.0,
+                font: { size: 7, family: "Arial", weight: "normal" }
+              },
+              minScale: 18000,
+              maxScale: 0
+            }]
+          }
+        ]
+      });
+
+      // ==================================================================
       //  ASSEMBLE MAP
       // ==================================================================
       var map = new Map({
@@ -980,10 +1163,12 @@
           citiesLayer,
           countiesLayer,
           contoursLayer,
+          railwayLayer,
           roadsCasingLayer,
           roadsLayer,
           parcelsLayer,
           buildingsLayer,
+          schoolsLayer,
           placeNamesLayer   // topmost → labels draw over all other layers
         ]
       });
