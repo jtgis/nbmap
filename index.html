@@ -22,10 +22,49 @@
       position: absolute; top: 0; left: 0; right: 0; bottom: 0;
       background: #f0f0f0;
     }
+    #attr-btn {
+      position: absolute; bottom: 10px; right: 10px; z-index: 1000;
+      width: 28px; height: 28px; border-radius: 50%;
+      background: rgba(255,255,255,0.85); border: 2px solid #666; cursor: pointer;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.3); font: italic bold 15px Georgia, serif;
+      color: #555; line-height: 24px; text-align: center;
+    }
+    #attr-btn:hover { background: #fff; }
+    #attr-panel {
+      display: none; position: absolute; bottom: 44px; right: 10px; z-index: 1000;
+      max-width: 320px; max-height: 50vh; overflow-y: auto;
+      background: rgba(255,255,255,0.95); border-radius: 6px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.25); padding: 10px 12px;
+      font: 11px/1.5 "Avenir Next", Arial, sans-serif; color: #333;
+    }
+    #attr-panel.open { display: block; }
+    #attr-panel a { color: #0066cc; }
   </style>
 </head>
 <body>
   <div id="map"></div>
+  <button id="attr-btn" title="Credits">i</button>
+  <div id="attr-panel">
+    <strong>Data Sources</strong><br>
+    Hillshade LiDAR &mdash; GNB ERD<br>
+    Land Cover &mdash; NRCan<br>
+    Hydrography (NBHN) &mdash; GeoNB / DNR<br>
+    Crown Land &mdash; GeoNB / DNR<br>
+    Wildlife Refuges &mdash; GNB ERD<br>
+    National Parks &mdash; NRCan / CLSS<br>
+    Provincial Parks &mdash; GeoNB / DNR<br>
+    Local Parks &mdash; Fredericton, Moncton, Saint John<br>
+    Counties &amp; Parishes &mdash; GeoNB / SNB<br>
+    Communities &mdash; GeoNB / DPS<br>
+    Contours &mdash; GeoNB / SNB<br>
+    Railway (NRWN) &mdash; GeoNB / SNB<br>
+    Roads (NBRN) &mdash; GeoNB<br>
+    Parcels &mdash; GeoNB / SNB<br>
+    Buildings &mdash; GeoNB / SNB<br>
+    Schools &mdash; GeoNB / EECD<br>
+    Place Names &mdash; GeoNB / NRCan<br>
+    <br>Map &mdash; <a href="https://leafletjs.com">Leaflet</a> + <a href="https://esri.github.io/esri-leaflet/">Esri Leaflet</a>
+  </div>
 
   <script>
     // ── Map ──
@@ -33,12 +72,18 @@
       center: [46.5, -66.5],
       zoom: 8,
       minZoom: 2,
-      maxZoom: 19
+      maxZoom: 19,
+      attributionControl: false
+    });
+
+    // ── Collapsible credits ──
+    document.getElementById('attr-btn').addEventListener('click', function () {
+      document.getElementById('attr-panel').classList.toggle('open');
     });
 
     // ── Custom panes for draw order ──
     var panes = [
-      ['hillshadeP', 200], ['landcoverP', 201], ['hydroP', 210],
+      ['hillshadeP', 200], ['landcoverP', 201], ['lcMaskP', 202], ['hydroP', 210],
       ['crownlandP', 215], ['wildlifeP', 216], ['natparksP', 217],
       ['parksP', 218], ['localparksP', 219], ['citiesP', 225],
       ['countiesP', 230], ['contoursP', 235], ['railwayP', 238],
@@ -99,7 +144,26 @@
     var landCover = L.esri.dynamicMapLayer({
       url: 'https://geoappext.nrcan.gc.ca/arcgis/rest/services/FGP/LandCover_EN/MapServer',
       opacity: 0.15, layers: [0], pane: 'landcoverP', format: 'png32'
-    }).addTo(map);
+    });
+
+    // ── Land cover NB clip mask (inverted polygon) — add mask first, then land cover ──
+    fetch('https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Counties/MapServer/0/query?where=1%3D1&returnGeometry=true&outSR=4326&f=geojson')
+      .then(function (r) { return r.json(); })
+      .then(function (fc) {
+        var world = [[-90, -180], [-90, 180], [90, 180], [90, -180]];
+        var rings = [world];
+        fc.features.forEach(function (f) {
+          var polys = f.geometry.type === 'MultiPolygon' ? f.geometry.coordinates : [f.geometry.coordinates];
+          polys.forEach(function (poly) {
+            rings.push(poly[0].map(function (c) { return [c[1], c[0]]; }));
+          });
+        });
+        L.polygon(rings, {
+          pane: 'lcMaskP', fillColor: '#f0f0f0', fillOpacity: 1,
+          stroke: false, interactive: false
+        }).addTo(map);
+        landCover.addTo(map);
+      });
 
     // ==================================================================
     //  2. HYDROGRAPHY
@@ -139,6 +203,7 @@
     var nationalParks = L.esri.featureLayer({
       url: 'https://proxyinternet.nrcan-rncan.gc.ca/arcgis/rest/services/CLSS-SATC/CLSS_Administrative_Boundaries/MapServer/1',
       where: "jurisdiction = 'NB'", pane: 'natparksP',
+      pointToLayer: function () { return L.marker([0,0], { opacity: 0 }); },
       style: function () { return { fillColor: '#385a00', color: '#284600', weight: 1.4, fillOpacity: 0.6, opacity: 0.78 }; }
     }).addTo(map);
 
@@ -190,17 +255,17 @@
         dl(0, { type: 'simple', symbol: sfs([0,0,0,0], sls([100,65,45,190], 1.2)) }, {
           labels: [
             { labelExpression: '[ENG_NAME]', labelPlacement: 'esriServerPolygonPlacementAlwaysHorizontal',
-              symbol: ts([85,55,35,255], { family:'Georgia', size:7, weight:'Bold' }, [255,255,255,210], 1),
+              symbol: ts([85,55,35,255], { family:'Cambria', size:14, weight:'Bold', style:'Italic' }, [255,255,255,210], 1.2),
               minScale: 3000000, maxScale: 200000 },
             { labelExpression: '[ENG_NAME]', labelPlacement: 'esriServerPolygonPlacementAlwaysHorizontal',
-              symbol: ts([100,70,50,180], { family:'Georgia', size:5 }, [255,255,255,180], 0.7),
+              symbol: ts([100,70,50,180], { family:'Cambria', size:10, style:'Italic' }, [255,255,255,180], 0.8),
               minScale: 200000, maxScale: 0 }
           ]
         }),
         dl(1, { type: 'simple', symbol: sfs([0,0,0,0], sls([130,100,80,120], 0.6, 'esriSLSDash')) }, {
           labels: [
             { labelExpression: '[ENG_NAME]', labelPlacement: 'esriServerPolygonPlacementAlwaysHorizontal',
-              symbol: ts([120,90,70,160], { family:'Georgia', size:5 }, [255,255,255,160], 0.7),
+              symbol: ts([120,90,70,160], { family:'Cambria', size:7, style:'Italic' }, [255,255,255,160], 0.7),
               minScale: 150000, maxScale: 0 }
           ]
         })
@@ -342,7 +407,22 @@
     // ==================================================================
     var placeNames = L.esri.dynamicMapLayer({
       url: 'https://geonb.snb.ca/arcgis/rest/services/GeoNB_NRCan_PlaceNames/MapServer',
-      pane: 'placenamesP', format: 'png32', layers: [0]
+      pane: 'placenamesP', format: 'png32',
+      dynamicLayers: [
+        dl(0, { type: 'simple', symbol: sms([0,0,0,0], 0, 'esriSMSCircle') }, {
+          labels: [
+            { where: "CONCISE = 'CITY'", labelExpression: '[GEONAME]', labelPlacement: 'esriServerPointLabelPlacementAboveRight',
+              symbol: ts([30,30,30,255], { family:'Calibri', size:11, weight:'Bold' }, [255,255,255,200], 1.2),
+              minScale: 0, maxScale: 0 },
+            { where: "CONCISE IN ('TOWN','MUN1','VILG')", labelExpression: '[GEONAME]', labelPlacement: 'esriServerPointLabelPlacementAboveRight',
+              symbol: ts([50,50,50,255], { family:'Calibri', size:9 }, [255,255,255,190], 1),
+              minScale: 1000000, maxScale: 0 },
+            { where: "CONCISE = 'UNP'", labelExpression: '[GEONAME]', labelPlacement: 'esriServerPointLabelPlacementAboveRight',
+              symbol: ts([80,80,80,255], { family:'Calibri', size:8 }, [255,255,255,180], 0.8),
+              minScale: 100000, maxScale: 0 }
+          ]
+        })
+      ]
     }).addTo(map);
 
     // ==================================================================
