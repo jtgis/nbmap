@@ -265,7 +265,7 @@
               minScale: 3000000, maxScale: 200000 },
             { labelExpression: '[ENG_NAME]', labelPlacement: 'esriServerPolygonPlacementAlwaysHorizontal',
               symbol: ts([85,55,35,255], { family:'Cambria', size:13, weight:'Bold', style:'Italic' }, [255,255,255,200], 1),
-              minScale: 200000, maxScale: 0 }
+              minScale: 200000, maxScale: 150000 }
           ]
         })
       ]
@@ -451,10 +451,10 @@
               symbol: ts([30,30,30,255], { family:'Calibri', size:11, weight:'Bold' }, [255,255,255,200], 1.2),
               minScale: 0, maxScale: 0 },
             { where: "CONCISE IN ('TOWN','MUN1','VILG')", labelExpression: '[GEONAME]', labelPlacement: 'esriServerPointLabelPlacementAboveRight',
-              symbol: ts([50,50,50,255], { family:'Calibri', size:9 }, [255,255,255,190], 1),
+              symbol: ts([50,50,50,255], { family:'Calibri', size:9, weight:'Bold' }, [255,255,255,190], 1),
               minScale: 1000000, maxScale: 0 },
             { where: "CONCISE = 'UNP'", labelExpression: '[GEONAME]', labelPlacement: 'esriServerPointLabelPlacementAboveRight',
-              symbol: ts([80,80,80,255], { family:'Calibri', size:8 }, [255,255,255,180], 0.8),
+              symbol: ts([80,80,80,255], { family:'Calibri', size:8, weight:'Bold' }, [255,255,255,180], 0.8),
               minScale: 100000, maxScale: 0 }
           ]
         })
