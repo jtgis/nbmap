@@ -120,6 +120,8 @@
       if (opts) {
         if (opts.def) d.definitionExpression = opts.def;
         if (opts.labels) d.drawingInfo.labelingInfo = opts.labels;
+        if (opts.minScale) d.minScale = opts.minScale;
+        if (opts.maxScale) d.maxScale = opts.maxScale;
       }
       return d;
     }
@@ -246,7 +248,7 @@
     }).addTo(map);
 
     // ==================================================================
-    //  4. COUNTIES & PARISHES
+    //  4. COUNTIES & PARISHES (split for debugging)
     // ==================================================================
     var counties = L.esri.dynamicMapLayer({
       url: 'https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Counties/MapServer',
@@ -258,14 +260,22 @@
               symbol: ts([85,55,35,255], { family:'Cambria', size:14, weight:'Bold', style:'Italic' }, [255,255,255,210], 1.2),
               minScale: 3000000, maxScale: 200000 },
             { labelExpression: '[ENG_NAME]', labelPlacement: 'esriServerPolygonPlacementAlwaysHorizontal',
-              symbol: ts([100,70,50,180], { family:'Cambria', size:10, style:'Italic' }, [255,255,255,180], 0.8),
+              symbol: ts([85,55,35,255], { family:'Cambria', size:13, weight:'Bold', style:'Italic' }, [255,255,255,200], 1),
               minScale: 200000, maxScale: 0 }
           ]
-        }),
+        })
+      ]
+    }).addTo(map);
+
+    var parishes = L.esri.dynamicMapLayer({
+      url: 'https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Counties/MapServer',
+      pane: 'countiesP', format: 'png32', minZoom: 10,
+      dynamicLayers: [
         dl(1, { type: 'simple', symbol: sfs([0,0,0,0], sls([130,100,80,120], 0.6, 'esriSLSDash')) }, {
+          minScale: 1200000,
           labels: [
             { labelExpression: '[ENG_NAME]', labelPlacement: 'esriServerPolygonPlacementAlwaysHorizontal',
-              symbol: ts([120,90,70,160], { family:'Cambria', size:7, style:'Italic' }, [255,255,255,160], 0.7),
+              symbol: ts([80,55,40,220], { family:'Cambria', size:10, weight:'Bold', style:'Italic' }, [255,255,255,180], 0.8),
               minScale: 150000, maxScale: 0 }
           ]
         })
@@ -277,7 +287,7 @@
     // ==================================================================
     var contours = L.esri.dynamicMapLayer({
       url: 'https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Contours/MapServer',
-      opacity: 0.55, pane: 'contoursP', format: 'png32', minZoom: 12,
+      opacity: 0.55, pane: 'contoursP', format: 'png32', minZoom: 16,
       dynamicLayers: [
         dl(1, { type: 'simple', symbol: sls([168,120,60,200], 0.4) }, {
           labels: [
@@ -314,7 +324,7 @@
     var casingDef = "Func_Road_Class IN ('Local/street','Local/unknown','Local/strata','DOT Local Named (Gravel)','NBDOT Road Public Access','Service Lane','Alleyway/lane','Weigh Station','Unknown')";
     var roadCasing = L.esri.dynamicMapLayer({
       url: 'https://geonb.snb.ca/arcgis/rest/services/GeoNB_Basemap_NBRN/MapServer',
-      pane: 'casingP', format: 'png24', minZoom: 14,
+      pane: 'casingP', format: 'png24', minZoom: 13,
       dynamicLayers: [ dl(1, { type: 'simple', symbol: sls([178,178,178,255], 3.5) }, { def: casingDef }) ]
     }).addTo(map);
 
@@ -340,7 +350,16 @@
           uniqueValueInfos: [ ri('Freeway',cFwy,4.5), ri('Expressway/highway',cFwy,3.5),
             ri('Arterial',cArt,2.2), ri('Collector',cCol,1.4), ri('NBDOT Local Numbered',cNum,0.8) ]
         }, { def: "Func_Road_Class IN ('Freeway','Expressway/highway','Arterial','Collector','NBDOT Local Numbered')" }),
-        // Large scale — local/minor only
+        // Ferry
+        dl(0, { type: 'simple', symbol: sls([100,140,180,255], 2, 'esriSLSDash') })
+      ]
+    }).addTo(map);
+
+    // ── Road tier: Local/minor white roads ──
+    var roadsLocal = L.esri.dynamicMapLayer({
+      url: 'https://geonb.snb.ca/arcgis/rest/services/GeoNB_Basemap_NBRN/MapServer',
+      pane: 'roadsP', format: 'png24', minZoom: 13,
+      dynamicLayers: [
         dl(1, { type: 'uniqueValue', field1: 'Func_Road_Class',
           defaultSymbol: sls(cWht, 1.5),
           uniqueValueInfos: [
@@ -354,9 +373,7 @@
             ri('NBDNR Resource Road F5',cRes,0.7,'esriSLSDash'), ri('NBDNR Resource Road F6',cRes,0.7,'esriSLSDash'),
             ri('Non-vehicular Addressed Segment',cDim,0.7,'esriSLSDash'),
             ri('NBDOT Road Under Construction',cDim,0.8,'esriSLSDash'), ri('Unknown',cWht,1) ]
-        }, { def: localFilter }),
-        // Ferry
-        dl(0, { type: 'simple', symbol: sls([100,140,180,255], 2, 'esriSLSDash') })
+        }, { def: localFilter })
       ]
     }).addTo(map);
 
@@ -430,6 +447,12 @@
     // ==================================================================
     L.control.scale({ imperial: true, metric: true }).addTo(map);
 
+    // ── TEMP: Zoom level indicator ──
+    var zoomBox = L.DomUtil.create('div', '', document.body);
+    zoomBox.style.cssText = 'position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:9999;background:rgba(0,0,0,0.7);color:#fff;padding:6px 14px;border-radius:4px;font:bold 16px monospace;pointer-events:none;';
+    zoomBox.textContent = 'Zoom: ' + map.getZoom();
+    map.on('zoomend', function () { zoomBox.textContent = 'Zoom: ' + map.getZoom(); });
+
     var overlays = {
       'Hillshade': hillshade,
       'Land Cover': landCover,
@@ -442,7 +465,8 @@
       'Moncton Parks': moncParks,
       'Saint John Parks': sjParks,
       'Cities': cities,
-      'Counties & Parishes': counties,
+      'Counties': counties,
+      'Parishes': parishes,
       'Contours': contours,
       'Railway': railway,
       'Road Casing': roadCasing,
@@ -456,8 +480,8 @@
     // ── Sync road tier visibility with main Roads toggle ──
     map.on('overlayadd overlayremove', function (e) {
       if (e.layer === roads) {
-        if (e.type === 'overlayadd') { map.addLayer(roadsMid); map.addLayer(roadsTop); }
-        else { map.removeLayer(roadsMid); map.removeLayer(roadsTop); }
+        if (e.type === 'overlayadd') { map.addLayer(roadsLocal); map.addLayer(roadsMid); map.addLayer(roadsTop); }
+        else { map.removeLayer(roadsLocal); map.removeLayer(roadsMid); map.removeLayer(roadsTop); }
       }
     });
   </script>
