@@ -161,6 +161,11 @@
         Hillshade (LiDAR)
       </label>
       <label class="layer-toggle">
+        <input type="checkbox" data-layer="landcover" checked />
+        <span class="swatch" style="background:linear-gradient(135deg, #5a8a3c 40%, #c8b464 60%);"></span>
+        Land Cover (NRCan)
+      </label>
+      <label class="layer-toggle">
         <input type="checkbox" data-layer="hydro" checked />
         <span class="swatch" style="background:#9ebbd7;"></span>
         Hydrography (NBHN)
@@ -169,6 +174,16 @@
         <input type="checkbox" data-layer="parks" checked />
         <span class="swatch" style="background:rgba(76,115,0,0.6);"></span>
         Provincial Parks
+      </label>
+      <label class="layer-toggle">
+        <input type="checkbox" data-layer="crownland" checked />
+        <span class="swatch" style="background:rgba(180,215,158,0.5);"></span>
+        Crown Land
+      </label>
+      <label class="layer-toggle">
+        <input type="checkbox" data-layer="wildlife" checked />
+        <span class="swatch" style="background:rgba(76,115,0,0.6);"></span>
+        Wildlife Refuges
       </label>
       <label class="layer-toggle">
         <input type="checkbox" data-layer="localparks" checked />
@@ -201,6 +216,11 @@
         <input type="checkbox" data-layer="parcels" checked />
         <span class="swatch" style="background:transparent;border:1px solid #b2b2b2;"></span>
         Parcels
+      </label>
+      <label class="layer-toggle">
+        <input type="checkbox" data-layer="buildings" checked />
+        <span class="swatch" style="background:rgba(160,110,70,0.4);border:1px solid rgba(130,85,50,0.6);"></span>
+        Buildings
       </label>
     </div>
 
@@ -265,6 +285,20 @@
         blendMode: "multiply",
         minScale: 7000000,
         format: "jpgpng"
+      });
+
+      // ==================================================================
+      //  1b. LAND COVER — NRCan 30 m (2010)
+      //      Subtle colour wash showing forest / wetland / cropland etc.
+      //      Very low opacity so it tints without dominating.
+      // ==================================================================
+      var landCoverLayer = new MapImageLayer({
+        url: "https://geoappext.nrcan.gc.ca/arcgis/rest/services/FGP/LandCover_EN/MapServer",
+        id: "landcover",
+        title: "Land Cover (NRCan)",
+        opacity: 0.15,
+        imageFormat: "png32",
+        sublayers: [{ id: 0 }]
       });
 
       // ==================================================================
@@ -370,7 +404,57 @@
       });
 
       // ==================================================================
-      //  3b. LOCAL PARKS — Fredericton & Moncton municipal parks
+      //  3b. CROWN LAND — pale green wash for provincial Crown lands
+      // ==================================================================
+      var crownLandLayer = new MapImageLayer({
+        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_DNR_Crown_Land/MapServer",
+        id: "crownland",
+        title: "Crown Land",
+        opacity: 0.30,
+        imageFormat: "png32",
+        sublayers: [{
+          id: 3,
+          title: "Crown Land",
+          renderer: {
+            type: "simple",
+            symbol: {
+              type: "simple-fill",
+              color: [180, 215, 158, 255],       // pale sage green
+              outline: null
+            }
+          }
+        }]
+      });
+
+      // ==================================================================
+      //  3c. WILDLIFE REFUGES — same green as provincial parks
+      // ==================================================================
+      var wildlifeRefugesLayer = new MapImageLayer({
+        url: "https://gis-erd-der.gnb.ca/server/rest/services/OpenData/WildlifeRefuge/MapServer",
+        id: "wildlife",
+        title: "Wildlife Refuges",
+        opacity: 0.6,
+        imageFormat: "png32",
+        sublayers: [{
+          id: 0,
+          title: "Wildlife Refuges",
+          renderer: {
+            type: "simple",
+            symbol: {
+              type: "simple-fill",
+              color: rgba(76, 115, 0, 255),
+              outline: {
+                type: "simple-line",
+                color: rgba(56, 90, 0, 200),
+                width: 1.2
+              }
+            }
+          }
+        }]
+      });
+
+      // ==================================================================
+      //  3d. LOCAL PARKS — Fredericton & Moncton municipal parks
       //      Lighter green to distinguish from provincial parks
       // ==================================================================
       var frederictonParksLayer = new FeatureLayer({
@@ -447,53 +531,87 @@
         id: "counties",
         title: "Counties & Parishes",
         imageFormat: "png32",
+        customParameters: { dpi: 192 },   // 2× supersample for crisp thin lines
         sublayers: [
           {
             id: 0,  // Counties
             title: "Counties",
+            minScale: 3000000,
+            maxScale: 0,          // draw all the way to max zoom
             renderer: {
               type: "simple",
               symbol: {
                 type: "simple-fill",
-                color: rgba(130, 130, 130, 0),   // transparent fill
+                color: [0, 0, 0, 0],             // transparent fill
                 outline: {
                   type: "simple-line",
-                  color: rgba(115, 38, 0, 255),  // WA DOR county brown
-                  width: 3
+                  color: [100, 65, 45, 190],      // warm taupe — refined, not garish
+                  width: 1.2
                 }
               }
             },
-            labelingInfo: [{
-              labelExpression: "[County_Name]",
-              labelPlacement: "always-horizontal",
-              symbol: {
-                type: "text",
-                color: [90, 30, 0, 255],
-                haloColor: [255, 255, 255, 220],
-                haloSize: 1.5,
-                font: { size: 11, weight: "bold", family: "Noto Sans" }
+            labelingInfo: [
+              {
+                // Overview labels (province-wide)
+                labelExpression: "[ENG_NAME]",
+                labelPlacement: "always-horizontal",
+                symbol: {
+                  type: "text",
+                  color: [85, 55, 35, 255],
+                  haloColor: [255, 255, 255, 210],
+                  haloSize: 1.0,
+                  font: { size: 7, weight: "bold", family: "Georgia" }
+                },
+                minScale: 3000000,
+                maxScale: 200000
               },
-              minScale: 3000000,
-              maxScale: 200000
-            }]
+              {
+                // Close-up labels — smaller, lighter
+                labelExpression: "[ENG_NAME]",
+                labelPlacement: "always-horizontal",
+                symbol: {
+                  type: "text",
+                  color: [100, 70, 50, 180],
+                  haloColor: [255, 255, 255, 180],
+                  haloSize: 0.7,
+                  font: { size: 5, weight: "normal", family: "Georgia" }
+                },
+                minScale: 200000,
+                maxScale: 0
+              }
+            ]
           },
           {
             id: 1,  // Parishes
             title: "Parishes",
+            minScale: 500000,
+            maxScale: 0,          // draw all the way to max zoom
             renderer: {
               type: "simple",
               symbol: {
                 type: "simple-fill",
-                color: rgba(130, 130, 130, 0),
+                color: [0, 0, 0, 0],
                 outline: {
                   type: "simple-line",
-                  color: rgba(115, 38, 0, 150),
-                  width: 1.8,
+                  color: [130, 100, 80, 120],     // subtle warm taupe, semi-transparent
+                  width: 0.6,
                   style: "dash"
                 }
               }
             },
-            minScale: 500000
+            labelingInfo: [{
+              labelExpression: "[ENG_NAME]",
+              labelPlacement: "always-horizontal",
+              symbol: {
+                type: "text",
+                color: [120, 90, 70, 160],
+                haloColor: [255, 255, 255, 160],
+                haloSize: 0.7,
+                font: { size: 5, weight: "normal", family: "Georgia" }
+              },
+              minScale: 150000,
+              maxScale: 0
+            }]
           }
         ]
       });
@@ -770,7 +888,24 @@
         id: "placenames",
         title: "Place Names",
         opacity: 1,
-        imageFormat: "png32"
+        imageFormat: "png32",
+        sublayers: [
+          { id: 3 },  // Terrain Features — keep default
+          { id: 2 },  // Constructed Features — keep default
+          { id: 1 },  // Administrative Areas — keep default
+          {
+            id: 0,    // Geographic Names — hide all point markers, labels still draw
+            renderer: {
+              type: "simple",
+              symbol: {
+                type: "simple-marker",
+                size: 0,
+                color: [0, 0, 0, 0],
+                outline: null
+              }
+            }
+          }
+        ]
       });
 
       // ==================================================================
@@ -801,12 +936,43 @@
       });
 
       // ==================================================================
+      //  9.  BUILDINGS  (LiDAR footprints — transparent brown)
+      //      Appears at 1:9,028 — tighter than parcels (1:12,500)
+      // ==================================================================
+      var buildingsLayer = new MapImageLayer({
+        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Buildings/MapServer",
+        id: "buildings",
+        title: "Buildings",
+        minScale: 4500,
+        imageFormat: "png24",
+        sublayers: [{
+          id: 0,
+          title: "Building Footprints",
+          renderer: {
+            type: "simple",
+            symbol: {
+              type: "simple-fill",
+              color: [160, 110, 70, 100],
+              outline: {
+                type: "simple-line",
+                color: [130, 85, 50, 160],
+                width: 0.4
+              }
+            }
+          }
+        }]
+      });
+
+      // ==================================================================
       //  ASSEMBLE MAP
       // ==================================================================
       var map = new Map({
         layers: [
           hillshadeLayer,   // bottommost — subtle terrain background
+          landCoverLayer,   // subdued land cover tint
           hydroLayer,
+          crownLandLayer,
+          wildlifeRefugesLayer,
           parksLayer,
           frederictonParksLayer,
           monctonParksLayer,
@@ -817,6 +983,7 @@
           roadsCasingLayer,
           roadsLayer,
           parcelsLayer,
+          buildingsLayer,
           placeNamesLayer   // topmost → labels draw over all other layers
         ]
       });
