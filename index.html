@@ -42,10 +42,11 @@
       "esri/layers/ImageryLayer",
       "esri/layers/GroupLayer",
       "esri/widgets/ScaleBar",
-      "esri/widgets/Expand"
+      "esri/widgets/Expand",
+      "esri/widgets/LayerList"
     ], function (
       Map, MapView, MapImageLayer, FeatureLayer, ImageryLayer, GroupLayer,
-      ScaleBar, Expand
+      ScaleBar, Expand, LayerList
     ) {
 
       /* ============================================================
@@ -104,6 +105,7 @@
         url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Counties/MapServer/0",
         title: "NB Clip Mask",
         outFields: [],
+        labelsVisible: false,
         minScale: 0,
         maxScale: 0,
         blendMode: "destination-in",
@@ -122,22 +124,41 @@
       var landCoverLayer = new GroupLayer({
         id: "landcover",
         title: "Land Cover (NRCan)",
+        listMode: "hide-children",
         opacity: 0.15,
         layers: [landCoverRaw, nbClipMask]
       });
 
       // ==================================================================
       //  2.  HYDROGRAPHY — NBHN  (Water: #9EBBD7)
-      //      Restructured as a GroupLayer so that island polygons
-      //      erase water via destination-out blend, letting land cover
-      //      show through on Grand Manan and other islands.
+      //      Single MapImageLayer with water bodies, courses, coast,
+      //      and wetlands (blue hash).  Islands omitted.
       // ==================================================================
-      var hydroWaterLayer = new MapImageLayer({
+      var hydroLayer = new MapImageLayer({
         url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_DNR_NBHN/MapServer",
-        title: "Hydro – Water Features",
-        opacity: 1,
+        id: "hydro",
+        title: "Hydrography (NBHN)",
+        listMode: "hide-children",
         imageFormat: "png32",
         sublayers: [
+          {
+            id: 11,  // Wetlands — blue diagonal hash
+            title: "Wetlands",
+            minScale: 250000,
+            renderer: {
+              type: "simple",
+              symbol: {
+                type: "simple-fill",
+                color: [130, 175, 210, 160],
+                style: "forward-diagonal",
+                outline: {
+                  type: "simple-line",
+                  color: [130, 175, 210, 120],
+                  width: 0.4
+                }
+              }
+            }
+          },
           {
             id: 13,  // Water Bodies – polygons
             title: "Water Bodies",
@@ -176,35 +197,6 @@
             }
           }
         ]
-      });
-
-      // Islands layer — destination-out erases water pixels where
-      // island polygons exist, creating transparent holes.
-      var hydroIslandsErase = new MapImageLayer({
-        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_DNR_NBHN/MapServer",
-        title: "Hydro – Island Erase",
-        blendMode: "destination-out",
-        imageFormat: "png32",
-        sublayers: [{
-          id: 12,
-          title: "Islands",
-          renderer: {
-            type: "simple",
-            symbol: {
-              type: "simple-fill",
-              color: [0, 0, 0, 255],   // opaque — just needs alpha for erase
-              outline: null
-            }
-          }
-        }]
-      });
-
-      // GroupLayer isolates the blend so destination-out only
-      // erases water, not the rest of the map.
-      var hydroLayer = new GroupLayer({
-        id: "hydro",
-        title: "Hydrography (NBHN)",
-        layers: [hydroWaterLayer, hydroIslandsErase]
       });
 
       // ==================================================================
@@ -253,6 +245,7 @@
         url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_DNR_ProvincialParks/MapServer",
         id: "parks",
         title: "Provincial Parks",
+        listMode: "hide-children",
         opacity: 0.6,
         minScale: 500000,
         imageFormat: "png32",
@@ -275,42 +268,13 @@
       });
 
       // ==================================================================
-      //  3b. WETLANDS — Regulated wetlands (DELG)
-      //      MapImageLayer — server-rendered for speed on all devices.
-      //      Visible from 1:250K.
-      // ==================================================================
-      var wetlandsLayer = new MapImageLayer({
-        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_ENV_Wetlands/MapServer",
-        id: "wetlands",
-        title: "Wetlands (Regulated)",
-        opacity: 0.55,
-        minScale: 250000,
-        imageFormat: "png32",
-        sublayers: [{
-          id: 2,
-          minScale: 250000,
-          renderer: {
-            type: "simple",
-            symbol: {
-              type: "simple-fill",
-              color: [100, 155, 190, 180],
-              outline: {
-                type: "simple-line",
-                color: [100, 155, 190, 140],
-                width: 0.4
-              }
-            }
-          }
-        }]
-      });
-
-      // ==================================================================
       //  3c. CROWN LAND — pale green wash for provincial Crown lands
       // ==================================================================
       var crownLandLayer = new MapImageLayer({
         url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_DNR_Crown_Land/MapServer",
         id: "crownland",
         title: "Crown Land",
+        listMode: "hide-children",
         opacity: 0.30,
         minScale: 500000,
         imageFormat: "png32",
@@ -335,6 +299,7 @@
         url: "https://gis-erd-der.gnb.ca/server/rest/services/OpenData/WildlifeRefuge/MapServer",
         id: "wildlife",
         title: "Wildlife Refuges",
+        listMode: "hide-children",
         opacity: 0.6,
         imageFormat: "png32",
         sublayers: [{
@@ -438,6 +403,7 @@
         url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Counties/MapServer",
         id: "counties",
         title: "Counties & Parishes",
+        listMode: "hide-children",
         imageFormat: "png32",
         sublayers: [
           {
@@ -531,6 +497,7 @@
         url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_DPS_NB911_Communities/MapServer",
         id: "cities",
         title: "Cities",
+        listMode: "hide-children",
         opacity: 0.45,
         imageFormat: "png32",
         sublayers: [{
@@ -560,6 +527,7 @@
         url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Contours/MapServer",
         id: "contours",
         title: "Contours",
+        listMode: "hide-children",
         opacity: 0.55,
         minScale: 150000,
         imageFormat: "png32",
@@ -586,7 +554,7 @@
                 haloSize: 0.8,
                 font: { size: 5, family: "Tahoma" }
               },
-              minScale: 24000
+              minScale: 9000
             }]
           },
           {
@@ -601,20 +569,7 @@
                 width: 0.9,
                 style: "solid"
               }
-            },
-            labelingInfo: [{
-              labelExpression: "[Contour]",
-              labelPlacement: "center-along",
-              symbol: {
-                type: "text",
-                color: [120, 78, 40, 255],
-                haloColor: [255, 255, 240, 200],
-                haloSize: 0.8,
-                font: { size: 5, family: "Tahoma", weight: "normal" }
-              },
-              minScale: 75000,
-              maxScale: 50000
-            }]
+            }
           }
         ]
       });
@@ -661,6 +616,7 @@
         url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_Basemap_NBRN/MapServer",
         id: "roads",
         title: "Road Network (NBRN)",
+        listMode: "hide-children",
         imageFormat: "png24",
         sublayers: [
           {
@@ -764,6 +720,7 @@
         url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_Basemap_NBRN/MapServer",
         id: "roadscasing",
         title: "Road Casing",
+        listMode: "hide-children",
         imageFormat: "png24",
         minScale: 36112,
         sublayers: [{
@@ -791,6 +748,7 @@
         url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_NRWN/MapServer",
         id: "railway",
         title: "Railway (NRWN)",
+        listMode: "hide-children",
         imageFormat: "png32",
         minScale: 72000,
         sublayers: [
@@ -854,11 +812,12 @@
         opacity: 1,
         imageFormat: "png32",
         sublayers: [
-          { id: 3 },  // Terrain Features — keep default
-          { id: 2 },  // Constructed Features — keep default
-          { id: 1 },  // Administrative Areas — keep default
+          { id: 3, title: "Terrain Features", visible: false },
+          { id: 2, title: "Constructed Features", visible: false },
+          { id: 1, title: "Administrative Areas", visible: false },
           {
-            id: 0,    // Geographic Names — hide all point markers, labels still draw
+            id: 0,
+            title: "Geographic Names",
             renderer: {
               type: "simple",
               symbol: {
@@ -879,6 +838,7 @@
         url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Parcels/MapServer",
         id: "parcels",
         title: "Parcels",
+        listMode: "hide-children",
         minScale: 12500,
         imageFormat: "png32",
         sublayers: [{
@@ -907,6 +867,7 @@
         url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Buildings/MapServer",
         id: "buildings",
         title: "Buildings",
+        listMode: "hide-children",
         minScale: 4500,
         imageFormat: "png24",
         sublayers: [{
@@ -936,6 +897,7 @@
         url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_EECD_PublicSchools/MapServer",
         id: "schools",
         title: "Public Schools",
+        listMode: "hide-children",
         imageFormat: "png32",
         minScale: 36000,
         sublayers: [
@@ -1007,31 +969,44 @@
       });
 
       // ==================================================================
-      //  ASSEMBLE MAP
+      //  ASSEMBLE MAP — Progressive layer loading
+      //  Only essential layers load on startup; the rest are added
+      //  when the user zooms to the relevant scale.  This keeps
+      //  connection count and GPU memory within mobile limits.
+      //
+      //  Phase 1: 6 layers (≤4 geonb requests)  — immediate
+      //  Phase 2: 3 overview layers              — 500 ms after load
+      //  Phase 3: detail groups                  — on first zoom-in
       // ==================================================================
+
+      // Master z-order (bottom → top) used for correct insertion
+      var layerOrder = [
+        "hillshade", "landcover", "hydro", "crownland",
+        "wildlife", "nationalparks", "parks",
+        "localparks-fredericton", "localparks-moncton", "localparks-saintjohn",
+        "cities", "counties", "contours", "railway",
+        "roadscasing", "roads", "parcels", "buildings", "schools", "placenames"
+      ];
+
+      function addInOrder(layer) {
+        var targetIdx = layerOrder.indexOf(layer.id);
+        var insertAt = 0;
+        map.layers.forEach(function (l, i) {
+          var idx = layerOrder.indexOf(l.id);
+          if (idx >= 0 && idx < targetIdx) insertAt = i + 1;
+        });
+        map.add(layer, insertAt);
+      }
+
+      // Phase 1 — essential base layers only
       var map = new Map({
         layers: [
-          hillshadeLayer,        // bottommost — subtle terrain background
-          landCoverLayer,        // subdued land cover tint
-          hydroLayer,            // water geometry (labels elevated)
-          wetlandsLayer,
-          crownLandLayer,
-          wildlifeRefugesLayer,
-          nationalParksLayer,
-          parksLayer,
-          frederictonParksLayer,
-          monctonParksLayer,
-          saintJohnParksLayer,
-          citiesLayer,
-          countiesLayer,         // boundary lines (labels elevated)
-          contoursLayer,         // 50 m + 10 m contours (single request)
-          railwayLayer,          // tracks + station dots (labels elevated)
-          roadsCasingLayer,
-          roadsLayer,
-          parcelsLayer,
-          buildingsLayer,
-          schoolsLayer,          // school markers + labels
-          placeNamesLayer        // topmost → place names over all
+          hillshadeLayer,        // ImageryLayer  (different domain)
+          landCoverLayer,        // GroupLayer     (NRCan + clip mask)
+          hydroLayer,            // 1 geonb req   (single NBHN export)
+          countiesLayer,         // 1 geonb req
+          roadsLayer,            // 1 geonb req
+          placeNamesLayer        // 1 geonb req
         ]
       });
 
@@ -1041,7 +1016,7 @@
       var view = new MapView({
         container: "viewDiv",
         map: map,
-        center: [-66.5, 46.5],     // New Brunswick centre
+        center: [-66.5, 46.5],
         zoom: 8,
         constraints: {
           minZoom: 2,
@@ -1050,11 +1025,46 @@
         ui: {
           components: ["zoom", "compass", "attribution"]
         },
-        // Match WA DOR neutral background outside the data extent
         background: { color: [240, 240, 240, 1] }
       });
 
-      // ── Scale Bar (like WA DOR) ──
+      // ── Deferred layer groups (added once when scale threshold met) ──
+      var deferred = [
+        { s: 500000, layers: [parksLayer, crownLandLayer] },
+        { s: 150000, layers: [contoursLayer] },
+        { s: 72000,  layers: [railwayLayer, frederictonParksLayer, monctonParksLayer, saintJohnParksLayer] },
+        { s: 36000,  layers: [roadsCasingLayer, schoolsLayer] },
+        { s: 12500,  layers: [parcelsLayer] },
+        { s: 4500,   layers: [buildingsLayer] }
+      ];
+
+      function checkDeferred(scale) {
+        deferred.forEach(function (g) {
+          if (!g.added && scale <= g.s) {
+            g.added = true;
+            g.layers.forEach(addInOrder);
+          }
+        });
+      }
+
+      view.when(function () {
+        // Phase 2 — overview layers (not critical for first paint)
+        setTimeout(function () {
+          addInOrder(nationalParksLayer);
+          addInOrder(wildlifeRefugesLayer);
+          addInOrder(citiesLayer);
+        }, 500);
+
+        // In case initial zoom already crosses a deferred threshold
+        checkDeferred(view.scale);
+      });
+
+      // Fire deferred checks when the view settles (not mid-pinch)
+      view.watch("stationary", function (isStationary) {
+        if (isStationary) checkDeferred(view.scale);
+      });
+
+      // ── Scale Bar ──
       var scaleBar = new ScaleBar({
         view: view,
         unit: "dual",
@@ -1062,13 +1072,17 @@
       });
       view.ui.add(scaleBar, "bottom-left");
 
+      // ── Layer Toggle ──
+      var layerList = new LayerList({ view: view });
+      var layerExpand = new Expand({
+        view: view,
+        content: layerList,
+        expandIconClass: "esri-icon-layers",
+        expandTooltip: "Toggle Layers"
+      });
+      view.ui.add(layerExpand, "top-right");
 
-
-
-
-      // ==================================================================
-      //  POPUP CONFIG  (clean, informational — WA DOR style)
-      // ==================================================================
+      // ── Popups ──
       view.popup.dockEnabled = true;
       view.popup.dockOptions = {
         buttonEnabled: true,
