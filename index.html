@@ -97,21 +97,26 @@
       // Mask layer — all NB counties rendered as solid opaque fill;
       // blendMode "destination-in" keeps only the land-cover pixels
       // that overlap NB territory (including Grand Manan & islands).
-      // FeatureLayer renders client-side, guaranteeing every pixel of
-      // the county polygons draws at all zoom levels.
-      var nbClipMask = new FeatureLayer({
-        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Counties/MapServer/0",
+      // MapImageLayer — server renders the county fill as an image,
+      // avoiding a client-side geometry download.
+      var nbClipMask = new MapImageLayer({
+        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Counties/MapServer",
         title: "NB Clip Mask",
-        outFields: [],
         blendMode: "destination-in",
-        renderer: {
-          type: "simple",
-          symbol: {
-            type: "simple-fill",
-            color: [0, 0, 0, 255],
-            outline: null
+        imageFormat: "png32",
+        sublayers: [{
+          id: 0,
+          minScale: 0,   // force draw at all zoom levels
+          maxScale: 0,
+          renderer: {
+            type: "simple",
+            symbol: {
+              type: "simple-fill",
+              color: [0, 0, 0, 255],
+              outline: null
+            }
           }
-        }
+        }]
       });
 
       // GroupLayer isolates the blend so the mask only clips
@@ -275,31 +280,31 @@
 
       // ==================================================================
       //  3b. WETLANDS — Regulated wetlands (DELG)
-      //      Bold teal fill to distinguish from water and parks.
-      //      Visible from 1:250K (service default 1:125K, dynamic override).
+      //      MapImageLayer — server-rendered for speed on all devices.
+      //      Visible from 1:250K.
       // ==================================================================
-      // FeatureLayer for client-side rendering — MapImageLayer ignores
-      // fill styles like "horizontal", so hatch patterns require FeatureLayer.
-      var wetlandsLayer = new FeatureLayer({
-        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_ENV_Wetlands/MapServer/2",
+      var wetlandsLayer = new MapImageLayer({
+        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_ENV_Wetlands/MapServer",
         id: "wetlands",
         title: "Wetlands (Regulated)",
-        outFields: [],
         opacity: 0.55,
-        minScale: 250000,
-        renderer: {
-          type: "simple",
-          symbol: {
-            type: "simple-fill",
-            color: [100, 155, 190, 180],           // hatch line color (blue-gray)
-            style: "horizontal",                   // classic topo wetland hatch
-            outline: {
-              type: "simple-line",
-              color: [100, 155, 190, 140],
-              width: 0.4
+        imageFormat: "png32",
+        sublayers: [{
+          id: 2,
+          minScale: 250000,
+          renderer: {
+            type: "simple",
+            symbol: {
+              type: "simple-fill",
+              color: [100, 155, 190, 180],
+              outline: {
+                type: "simple-line",
+                color: [100, 155, 190, 140],
+                width: 0.4
+              }
             }
           }
-        }
+        }]
       });
 
       // ==================================================================
@@ -550,72 +555,75 @@
       });
 
       // ==================================================================
-      //  5b. CONTOURS — FeatureLayer for automatic geometry generalization
-      //      Client-side rendering lets the API apply maxAllowableOffset
-      //      on every query, dramatically reducing vertex count and
-      //      producing smoother lines.  Labels render via the global
-      //      label engine (above all layers) so no separate label
-      //      reference layer is needed — saving a server round-trip.
+      //  5b. CONTOURS — MapImageLayer (server-rendered for speed)
+      //      Server handles rendering and labelling; no client-side
+      //      geometry download needed.
       // ==================================================================
-      var contours50mLayer = new FeatureLayer({
-        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Contours/MapServer/0",
+      var contours50mLayer = new MapImageLayer({
+        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Contours/MapServer",
         id: "contours-50m",
         title: "Contours – 50 m",
-        outFields: ["Contour"],
         opacity: 0.55,
-        minScale: 150000,
-        maxScale: 50000,
-        renderer: {
-          type: "simple",
-          symbol: {
-            type: "simple-line",
-            color: [140, 90, 45, 255],
-            width: 0.9,
-            style: "solid"
-          }
-        },
-        labelingInfo: [{
-          labelExpressionInfo: { expression: "$feature.Contour" },
-          labelPlacement: "center-along",
-          symbol: {
-            type: "text",
-            color: [120, 78, 40, 255],
-            haloColor: [255, 255, 240, 200],
-            haloSize: 0.8,
-            font: { size: 5, family: "Tahoma", weight: "normal" }
+        imageFormat: "png32",
+        sublayers: [{
+          id: 0,
+          minScale: 150000,
+          maxScale: 50000,
+          renderer: {
+            type: "simple",
+            symbol: {
+              type: "simple-line",
+              color: [140, 90, 45, 255],
+              width: 0.9,
+              style: "solid"
+            }
           },
-          minScale: 75000,
-          maxScale: 50000
+          labelingInfo: [{
+            labelExpression: "[Contour]",
+            labelPlacement: "center-along",
+            symbol: {
+              type: "text",
+              color: [120, 78, 40, 255],
+              haloColor: [255, 255, 240, 200],
+              haloSize: 0.8,
+              font: { size: 5, family: "Tahoma", weight: "normal" }
+            },
+            minScale: 75000,
+            maxScale: 50000
+          }]
         }]
       });
 
-      var contours10mLayer = new FeatureLayer({
-        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Contours/MapServer/1",
+      var contours10mLayer = new MapImageLayer({
+        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Contours/MapServer",
         id: "contours-10m",
         title: "Contours – 10 m",
-        outFields: ["Contour"],
         opacity: 0.55,
-        minScale: 50000,
-        renderer: {
-          type: "simple",
-          symbol: {
-            type: "simple-line",
-            color: [168, 120, 60, 200],
-            width: 0.4,
-            style: "solid"
-          }
-        },
-        labelingInfo: [{
-          labelExpressionInfo: { expression: "$feature.Contour" },
-          labelPlacement: "center-along",
-          symbol: {
-            type: "text",
-            color: [140, 95, 50, 230],
-            haloColor: [255, 255, 240, 180],
-            haloSize: 0.8,
-            font: { size: 5, family: "Tahoma" }
+        imageFormat: "png32",
+        sublayers: [{
+          id: 1,
+          minScale: 50000,
+          renderer: {
+            type: "simple",
+            symbol: {
+              type: "simple-line",
+              color: [168, 120, 60, 200],
+              width: 0.4,
+              style: "solid"
+            }
           },
-          minScale: 24000
+          labelingInfo: [{
+            labelExpression: "[Contour]",
+            labelPlacement: "center-along",
+            symbol: {
+              type: "text",
+              color: [140, 95, 50, 230],
+              haloColor: [255, 255, 240, 180],
+              haloSize: 0.8,
+              font: { size: 5, family: "Tahoma" }
+            },
+            minScale: 24000
+          }]
         }]
       });
 
