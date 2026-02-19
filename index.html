@@ -27,14 +27,11 @@
       bottom: 0;
     }
 
-
   </style>
 </head>
 <body>
 
   <div id="viewDiv"></div>
-
-
 
   <script>
     require([
@@ -97,25 +94,24 @@
         sublayers: [{ id: 0 }]
       });
 
-      // Mask layer — NB counties rendered as solid opaque fill;
+      // Mask layer — all NB counties rendered as solid opaque fill;
       // blendMode "destination-in" keeps only the land-cover pixels
-      // that overlap NB territory.
-      var nbClipMask = new MapImageLayer({
-        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Counties/MapServer",
+      // that overlap NB territory (including Grand Manan & islands).
+      // FeatureLayer renders client-side, guaranteeing every pixel of
+      // the county polygons draws at all zoom levels.
+      var nbClipMask = new FeatureLayer({
+        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Counties/MapServer/0",
         title: "NB Clip Mask",
-        imageFormat: "png32",
+        outFields: [],
         blendMode: "destination-in",
-        sublayers: [{
-          id: 0,
-          renderer: {
-            type: "simple",
-            symbol: {
-              type: "simple-fill",
-              color: [0, 0, 0, 255],
-              outline: null
-            }
+        renderer: {
+          type: "simple",
+          symbol: {
+            type: "simple-fill",
+            color: [0, 0, 0, 255],
+            outline: null
           }
-        }]
+        }
       });
 
       // GroupLayer isolates the blend so the mask only clips
@@ -129,12 +125,13 @@
 
       // ==================================================================
       //  2.  HYDROGRAPHY — NBHN  (Water: #9EBBD7)
-      //      Dynamic layer so we can override symbology
+      //      Restructured as a GroupLayer so that island polygons
+      //      erase water via destination-out blend, letting land cover
+      //      show through on Grand Manan and other islands.
       // ==================================================================
-      var hydroLayer = new MapImageLayer({
+      var hydroWaterLayer = new MapImageLayer({
         url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_DNR_NBHN/MapServer",
-        id: "hydro",
-        title: "Hydrography (NBHN)",
+        title: "Hydro – Water Features",
         opacity: 1,
         imageFormat: "png32",
         sublayers: [
@@ -147,32 +144,6 @@
               symbol: {
                 type: "simple-fill",
                 color: rgba(158, 187, 215, 255),
-                outline: null
-              }
-            }
-          },
-          {
-            id: 12,  // Islands
-            title: "Islands",
-            labelsVisible: false,
-            renderer: {
-              type: "simple",
-              symbol: {
-                type: "simple-fill",
-                color: rgba(225, 225, 225, 255),
-                outline: null
-              }
-            }
-          },
-          {
-            id: 11,  // Wetlands
-            title: "Wetlands",
-            labelsVisible: false,
-            renderer: {
-              type: "simple",
-              symbol: {
-                type: "simple-fill",
-                color: rgba(158, 187, 215, 100),
                 outline: null
               }
             }
@@ -207,6 +178,35 @@
         ]
       });
 
+      // Islands layer — destination-out erases water pixels where
+      // island polygons exist, creating transparent holes.
+      var hydroIslandsErase = new MapImageLayer({
+        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_DNR_NBHN/MapServer",
+        title: "Hydro – Island Erase",
+        blendMode: "destination-out",
+        imageFormat: "png32",
+        sublayers: [{
+          id: 12,
+          title: "Islands",
+          renderer: {
+            type: "simple",
+            symbol: {
+              type: "simple-fill",
+              color: [0, 0, 0, 255],   // opaque — just needs alpha for erase
+              outline: null
+            }
+          }
+        }]
+      });
+
+      // GroupLayer isolates the blend so destination-out only
+      // erases water, not the rest of the map.
+      var hydroLayer = new GroupLayer({
+        id: "hydro",
+        title: "Hydrography (NBHN)",
+        layers: [hydroWaterLayer, hydroIslandsErase]
+      });
+
       // ==================================================================
       //  3a. NATIONAL PARKS  (Fundy & Kouchibouguac)
       //      FeatureLayer from CLSS service, filtered to NB.
@@ -217,6 +217,7 @@
         id: "nationalparks",
         title: "National Parks",
         definitionExpression: "jurisdiction = 'NB'",
+        outFields: ["adminAreaNameEng"],
         opacity: 0.6,
         renderer: {
           type: "simple",
@@ -273,7 +274,36 @@
       });
 
       // ==================================================================
-      //  3b. CROWN LAND — pale green wash for provincial Crown lands
+      //  3b. WETLANDS — Regulated wetlands (DELG)
+      //      Bold teal fill to distinguish from water and parks.
+      //      Visible from 1:250K (service default 1:125K, dynamic override).
+      // ==================================================================
+      // FeatureLayer for client-side rendering — MapImageLayer ignores
+      // fill styles like "horizontal", so hatch patterns require FeatureLayer.
+      var wetlandsLayer = new FeatureLayer({
+        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_ENV_Wetlands/MapServer/2",
+        id: "wetlands",
+        title: "Wetlands (Regulated)",
+        outFields: [],
+        opacity: 0.55,
+        minScale: 250000,
+        renderer: {
+          type: "simple",
+          symbol: {
+            type: "simple-fill",
+            color: [100, 155, 190, 180],           // hatch line color (blue-gray)
+            style: "horizontal",                   // classic topo wetland hatch
+            outline: {
+              type: "simple-line",
+              color: [100, 155, 190, 140],
+              width: 0.4
+            }
+          }
+        }
+      });
+
+      // ==================================================================
+      //  3c. CROWN LAND — pale green wash for provincial Crown lands
       // ==================================================================
       var crownLandLayer = new MapImageLayer({
         url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_DNR_Crown_Land/MapServer",
@@ -330,6 +360,7 @@
         url: "https://services2.arcgis.com/iLWAxhpxafhOza2U/arcgis/rest/services/Park_Open_Space/FeatureServer/0",
         id: "localparks-fredericton",
         title: "Fredericton Parks & Open Space",
+        outFields: ["Zones"],
         opacity: 0.55,
         renderer: {
           type: "unique-value",
@@ -366,6 +397,7 @@
         url: "https://services1.arcgis.com/E26PuSoie2Y7bbyI/arcgis/rest/services/Parks/FeatureServer/0",
         id: "localparks-moncton",
         title: "Moncton Parks",
+        outFields: [],
         opacity: 0.55,
         renderer: {
           type: "simple",
@@ -381,6 +413,7 @@
         url: "https://services.arcgis.com/DLk7hgTJeJILuEBg/ArcGIS/rest/services/Parks3/FeatureServer/0",
         id: "localparks-saintjohn",
         title: "Saint John Parks",
+        outFields: [],
         opacity: 0.55,
         renderer: {
           type: "simple",
@@ -517,77 +550,73 @@
       });
 
       // ==================================================================
-      //  5b. CONTOURS — 50 m index + 10 m intermediate
-      //      Subtle brown topo lines; service scale limits are good:
-      //        50 m contours  1:150 K → 1:50 K  (index)
-      //        10 m contours  1:50 K  → detail  (intermediate)
-      //      Placed above parks / cities, below roads — standard topo order.
+      //  5b. CONTOURS — FeatureLayer for automatic geometry generalization
+      //      Client-side rendering lets the API apply maxAllowableOffset
+      //      on every query, dramatically reducing vertex count and
+      //      producing smoother lines.  Labels render via the global
+      //      label engine (above all layers) so no separate label
+      //      reference layer is needed — saving a server round-trip.
       // ==================================================================
-      var contoursLayer = new MapImageLayer({
-        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Contours/MapServer",
-        id: "contours",
-        title: "Contours (LiDAR)",
+      var contours50mLayer = new FeatureLayer({
+        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Contours/MapServer/0",
+        id: "contours-50m",
+        title: "Contours – 50 m",
+        outFields: ["Contour"],
         opacity: 0.55,
-        imageFormat: "png32",
-        customParameters: { dpi: 192 },
-        sublayers: [
-          {
-            id: 0,  // 50 m index contours
-            title: "Contours – 50 m",
-            labelsVisible: false,
-            minScale: 150000,
-            maxScale: 50000,
-            renderer: {
-              type: "simple",
-              symbol: {
-                type: "simple-line",
-                color: [140, 90, 45, 255],
-                width: 0.9,
-                style: "solid"
-              }
-            },
-            labelingInfo: [{
-              labelExpression: "[Contour]",
-              labelPlacement: "center-along",
-              symbol: {
-                type: "text",
-                color: [120, 78, 40, 255],
-                haloColor: [255, 255, 240, 200],
-                haloSize: 0.8,
-                font: { size: 5, family: "Tahoma", weight: "normal" }
-              },
-              minScale: 75000,
-              maxScale: 50000
-            }]
-          },
-          {
-            id: 1,  // 10 m intermediate contours
-            title: "Contours – 10 m",
-            labelsVisible: false,
-            minScale: 50000,
-            renderer: {
-              type: "simple",
-              symbol: {
-                type: "simple-line",
-                color: [168, 120, 60, 200],
-                width: 0.4,
-                style: "solid"
-              }
-            },
-            labelingInfo: [{
-              labelExpression: "[Contour]",
-              labelPlacement: "center-along",
-              symbol: {
-                type: "text",
-                color: [140, 95, 50, 230],
-                haloColor: [255, 255, 240, 180],
-                haloSize: 0.8,
-                font: { size: 5, family: "Tahoma" }
-              },
-              minScale: 24000
-            }]
+        minScale: 150000,
+        maxScale: 50000,
+        renderer: {
+          type: "simple",
+          symbol: {
+            type: "simple-line",
+            color: [140, 90, 45, 255],
+            width: 0.9,
+            style: "solid"
           }
-        ]
+        },
+        labelingInfo: [{
+          labelExpressionInfo: { expression: "$feature.Contour" },
+          labelPlacement: "center-along",
+          symbol: {
+            type: "text",
+            color: [120, 78, 40, 255],
+            haloColor: [255, 255, 240, 200],
+            haloSize: 0.8,
+            font: { size: 5, family: "Tahoma", weight: "normal" }
+          },
+          minScale: 75000,
+          maxScale: 50000
+        }]
+      });
+
+      var contours10mLayer = new FeatureLayer({
+        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Contours/MapServer/1",
+        id: "contours-10m",
+        title: "Contours – 10 m",
+        outFields: ["Contour"],
+        opacity: 0.55,
+        minScale: 50000,
+        renderer: {
+          type: "simple",
+          symbol: {
+            type: "simple-line",
+            color: [168, 120, 60, 200],
+            width: 0.4,
+            style: "solid"
+          }
+        },
+        labelingInfo: [{
+          labelExpressionInfo: { expression: "$feature.Contour" },
+          labelPlacement: "center-along",
+          symbol: {
+            type: "text",
+            color: [140, 95, 50, 230],
+            haloColor: [255, 255, 240, 180],
+            haloSize: 0.8,
+            font: { size: 5, family: "Tahoma" }
+          },
+          minScale: 24000
+        }]
       });
 
       // ==================================================================
@@ -985,61 +1014,6 @@
       //  The original geometry layers have labelsVisible: false.
       // ==================================================================
 
-      // Contour labels — elevation values above road lines
-      var contoursLabelsLayer = new MapImageLayer({
-        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Contours/MapServer",
-        id: "contours-labels",
-        title: "Contour Labels",
-        listMode: "hide",
-        opacity: 0.55,
-        imageFormat: "png32",
-        customParameters: { dpi: 192 },
-        sublayers: [
-          {
-            id: 0,
-            minScale: 150000,
-            maxScale: 50000,
-            renderer: {
-              type: "simple",
-              symbol: { type: "simple-line", color: [0,0,0,0], width: 0.001 }
-            },
-            labelingInfo: [{
-              labelExpression: "[Contour]",
-              labelPlacement: "center-along",
-              symbol: {
-                type: "text",
-                color: [120, 78, 40, 255],
-                haloColor: [255, 255, 240, 200],
-                haloSize: 0.8,
-                font: { size: 5, family: "Tahoma", weight: "normal" }
-              },
-              minScale: 75000,
-              maxScale: 50000
-            }]
-          },
-          {
-            id: 1,
-            minScale: 50000,
-            renderer: {
-              type: "simple",
-              symbol: { type: "simple-line", color: [0,0,0,0], width: 0.001 }
-            },
-            labelingInfo: [{
-              labelExpression: "[Contour]",
-              labelPlacement: "center-along",
-              symbol: {
-                type: "text",
-                color: [140, 95, 50, 230],
-                haloColor: [255, 255, 240, 180],
-                haloSize: 0.8,
-                font: { size: 5, family: "Tahoma" }
-              },
-              minScale: 24000
-            }]
-          }
-        ]
-      });
-
       // Hydro labels — water body & stream names (server defaults)
       var hydroLabelsLayer = new MapImageLayer({
         url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_DNR_NBHN/MapServer",
@@ -1180,6 +1154,7 @@
           hillshadeLayer,        // bottommost — subtle terrain background
           landCoverLayer,        // subdued land cover tint
           hydroLayer,            // water geometry (labels elevated)
+          wetlandsLayer,
           crownLandLayer,
           wildlifeRefugesLayer,
           nationalParksLayer,
@@ -1189,14 +1164,14 @@
           saintJohnParksLayer,
           citiesLayer,
           countiesLayer,         // boundary lines (labels elevated)
-          contoursLayer,         // contour lines (labels elevated)
+          contours50mLayer,      // 50 m index contours (generalized FeatureLayer)
+          contours10mLayer,      // 10 m contours (generalized FeatureLayer)
           railwayLayer,          // tracks + station dots (labels elevated)
           roadsCasingLayer,
           roadsLayer,
           parcelsLayer,
           buildingsLayer,
           // ── Label reference layers (above all geometry) ──
-          contoursLabelsLayer,   // contour values
           hydroLabelsLayer,      // water body & stream names
           countiesLabelsLayer,   // county & parish names
           railwayLabelsLayer,    // station names
