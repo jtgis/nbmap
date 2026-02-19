@@ -85,7 +85,7 @@
     var panes = [
       ['hillshadeP', 200], ['landcoverP', 201], ['lcMaskP', 202], ['hydroP', 210],
       ['crownlandP', 215], ['wildlifeP', 216], ['natparksP', 217],
-      ['parksP', 218], ['localparksP', 219], ['citiesP', 225],
+      ['parksP', 218], ['localparksP', 219],
       ['countiesP', 230], ['contoursP', 235], ['railwayP', 238],
       ['casingP', 240], ['roadsP', 245], ['roadsMidP', 246],
       ['roadsTopP', 247], ['parcelsP', 250], ['buildingsP', 255],
@@ -120,8 +120,8 @@
       if (opts) {
         if (opts.def) d.definitionExpression = opts.def;
         if (opts.labels) d.drawingInfo.labelingInfo = opts.labels;
-        if (opts.minScale) d.minScale = opts.minScale;
-        if (opts.maxScale) d.maxScale = opts.maxScale;
+        if (opts.minScale != null) d.minScale = opts.minScale;
+        if (opts.maxScale != null) d.maxScale = opts.maxScale;
       }
       return d;
     }
@@ -240,18 +240,6 @@
     }).addTo(map);
 
     // ==================================================================
-    //  5. CITIES
-    // ==================================================================
-    var cities = L.esri.dynamicMapLayer({
-      url: 'https://geonb.snb.ca/arcgis/rest/services/GeoNB_DPS_NB911_Communities/MapServer',
-      opacity: 0.45, pane: 'citiesP', format: 'png24', minZoom: 10,
-      dynamicLayers: [
-        dl(0, { type: 'simple', symbol: sfs([252,210,218,140], sls([200,160,170,180], 1)) },
-          { def: "COMMUNITY_NAME IN ('Saint John','Fredericton','Moncton')" })
-      ]
-    }).addTo(map);
-
-    // ==================================================================
     //  4. COUNTIES & PARISHES (split for debugging)
     // ==================================================================
     var counties = L.esri.dynamicMapLayer({
@@ -289,21 +277,42 @@
     // ==================================================================
     //  5b. CONTOURS
     // ==================================================================
-    var contours = L.esri.dynamicMapLayer({
-      url: 'https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Contours/MapServer',
-      opacity: 0.55, pane: 'contoursP', format: 'png24', minZoom: 16,
-      requestParams: { maxAllowableOffset: 5 },
-      dynamicLayers: [
-        dl(1, { type: 'simple', symbol: sls([168,120,60,200], 0.5) }, {
+    var contourSmoothing = 100;
+    var contourMinZoom = 14;
+    var contourDynamicLayers;
+    // Layer 0 = Contour_50 (50m index contours) — slightly heavier, labeled
+    // Layer 1 = Contour_10m (10m intermediate) — fine, no labels
+    // minScale/maxScale: 0 overrides the server's native scale limits
+    contourDynamicLayers = [
+        dl(0, { type: 'simple', symbol: sls([140,95,45,255], 1.2) }, {
+          minScale: 0, maxScale: 0,
           labels: [
             { labelExpression: '[Contour]', labelPlacement: 'esriServerLinePlacementCenterAlong',
-              symbol: ts([140,95,50,230], { family:'Tahoma', size:5 }, [255,255,240,180], 0.8),
-              minScale: 9000, maxScale: 0 }
+              symbol: ts([120,80,35,255], { family:'Arial', size:6 }, [255,255,240,200], 0.8),
+              minScale: 15000, maxScale: 0 }
           ]
         }),
-        dl(0, { type: 'simple', symbol: sls([140,90,45,255], 0.9) })
-      ]
-    }).addTo(map);
+        dl(1, { type: 'simple', symbol: sls([165,125,75,255], 0.6) }, {
+          minScale: 0, maxScale: 0
+        })
+      ];
+
+    function makeContourLayer() {
+      var layer = L.esri.dynamicMapLayer({
+        url: 'https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Contours/MapServer',
+        opacity: 0.75, pane: 'contoursP', format: 'png8', minZoom: contourMinZoom,
+        dynamicLayers: contourDynamicLayers
+      });
+      // Inject maxAllowableOffset into the export URL
+      var origBuild = layer._buildExportParams.bind(layer);
+      layer._buildExportParams = function () {
+        var p = origBuild();
+        p.maxAllowableOffset = contourSmoothing;
+        return p;
+      };
+      return layer;
+    }
+    var contours = makeContourLayer().addTo(map);
 
     // ==================================================================
     //  6c. RAILWAY
@@ -445,6 +454,7 @@
       url: 'https://geonb.snb.ca/arcgis/rest/services/GeoNB_NRCan_PlaceNames/MapServer',
       pane: 'placenamesP', format: 'png32',
       dynamicLayers: [
+        // Layer 0: Geographic Names (populated places)
         dl(0, { type: 'simple', symbol: sms([0,0,0,0], 0, 'esriSMSCircle') }, {
           labels: [
             { where: "CONCISE = 'CITY'", labelExpression: '[GEONAME]', labelPlacement: 'esriServerPointLabelPlacementAboveRight',
@@ -456,6 +466,42 @@
             { where: "CONCISE = 'UNP'", labelExpression: '[GEONAME]', labelPlacement: 'esriServerPointLabelPlacementAboveRight',
               symbol: ts([80,80,80,255], { family:'Calibri', size:8, weight:'Bold' }, [255,255,255,180], 0.8),
               minScale: 100000, maxScale: 0 }
+          ]
+        }),
+        // Layer 1: Administrative Areas (MUN1, PARK)
+        dl(1, { type: 'simple', symbol: sms([0,0,0,0], 0, 'esriSMSCircle') }, {
+          labels: [
+            { where: "CONCISE = 'PARK'", labelExpression: '[GEONAME]', labelPlacement: 'esriServerPointLabelPlacementAboveRight',
+              symbol: ts([56,90,0,255], { family:'Calibri', size:8, weight:'Bold', style:'Italic' }, [255,255,255,190], 0.8),
+              minScale: 250000, maxScale: 0 },
+            { where: "CONCISE = 'MUN1'", labelExpression: '[GEONAME]', labelPlacement: 'esriServerPointLabelPlacementAboveRight',
+              symbol: ts([50,50,50,255], { family:'Calibri', size:8, weight:'Bold' }, [255,255,255,180], 0.8),
+              minScale: 250000, maxScale: 0 }
+          ]
+        }),
+        // Layer 2: Constructed Features (ROAD, MIL, MAR, HYDR)
+        dl(2, { type: 'simple', symbol: sms([0,0,0,0], 0, 'esriSMSCircle') }, {
+          labels: [
+            { where: "CONCISE = 'HYDR'", labelExpression: '[GEONAME]', labelPlacement: 'esriServerPointLabelPlacementAboveRight',
+              symbol: ts([30,80,140,255], { family:'Calibri', size:7, weight:'Bold', style:'Italic' }, [255,255,255,190], 0.8),
+              minScale: 250000, maxScale: 0 },
+            { where: "CONCISE IN ('MAR','MIL','ROAD')", labelExpression: '[GEONAME]', labelPlacement: 'esriServerPointLabelPlacementAboveRight',
+              symbol: ts([80,80,80,255], { family:'Calibri', size:7, weight:'Bold' }, [255,255,255,180], 0.8),
+              minScale: 150000, maxScale: 0 }
+          ]
+        }),
+        // Layer 3: Terrain Features (MTN, CAPE, BCH, CLF, VALL, SHL, PLN, VEGL, CAVE)
+        dl(3, { type: 'simple', symbol: sms([0,0,0,0], 0, 'esriSMSCircle') }, {
+          labels: [
+            { where: "CONCISE IN ('MTN','CLF')", labelExpression: '[GEONAME]', labelPlacement: 'esriServerPointLabelPlacementAboveRight',
+              symbol: ts([100,70,40,255], { family:'Calibri', size:8, weight:'Bold', style:'Italic' }, [255,255,255,190], 0.8),
+              minScale: 250000, maxScale: 0 },
+            { where: "CONCISE IN ('CAPE','BCH','SHL')", labelExpression: '[GEONAME]', labelPlacement: 'esriServerPointLabelPlacementAboveRight',
+              symbol: ts([20,90,170,255], { family:'Calibri', size:8, weight:'Bold', style:'Italic' }, [255,255,255,190], 0.8),
+              minScale: 250000, maxScale: 0 },
+            { where: "CONCISE IN ('VALL','PLN','VEGL','CAVE')", labelExpression: '[GEONAME]', labelPlacement: 'esriServerPointLabelPlacementAboveRight',
+              symbol: ts([100,70,40,220], { family:'Calibri', size:7, weight:'Bold', style:'Italic' }, [255,255,255,180], 0.8),
+              minScale: 150000, maxScale: 0 }
           ]
         })
       ]
@@ -504,7 +550,6 @@
       'Fredericton Parks': fredParks,
       'Moncton Parks': moncParks,
       'Saint John Parks': sjParks,
-      'Cities': cities,
       'Counties': counties,
       'Parishes': parishes,
       'Contours': contours,
