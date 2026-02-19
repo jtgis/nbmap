@@ -286,6 +286,7 @@
         id: "wetlands",
         title: "Wetlands (Regulated)",
         opacity: 0.55,
+        minScale: 250000,
         imageFormat: "png32",
         sublayers: [{
           id: 2,
@@ -365,6 +366,7 @@
         title: "Fredericton Parks & Open Space",
         outFields: ["Zones"],
         opacity: 0.55,
+        minScale: 72000,
         renderer: {
           type: "unique-value",
           field: "Zones",
@@ -402,6 +404,7 @@
         title: "Moncton Parks",
         outFields: [],
         opacity: 0.55,
+        minScale: 72000,
         renderer: {
           type: "simple",
           symbol: {
@@ -418,6 +421,7 @@
         title: "Saint John Parks",
         outFields: [],
         opacity: 0.55,
+        minScale: 72000,
         renderer: {
           type: "simple",
           symbol: {
@@ -436,7 +440,7 @@
         id: "counties",
         title: "Counties & Parishes",
         imageFormat: "png32",
-        customParameters: { dpi: 192 },   // 2× supersample for crisp thin lines
+        imageFormat: "png32",
         sublayers: [
           {
             id: 0,  // Counties
@@ -554,75 +558,69 @@
 
       // ==================================================================
       //  5b. CONTOURS — MapImageLayer (server-rendered for speed)
-      //      Server handles rendering and labelling; no client-side
-      //      geometry download needed.
+      //      Single layer with both sublayers — one server request.
       // ==================================================================
-      var contours50mLayer = new MapImageLayer({
+      var contoursLayer = new MapImageLayer({
         url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Contours/MapServer",
-        id: "contours-50m",
-        title: "Contours – 50 m",
+        id: "contours",
+        title: "Contours",
         opacity: 0.55,
+        minScale: 150000,
         imageFormat: "png32",
-        sublayers: [{
-          id: 0,
-          minScale: 150000,
-          maxScale: 50000,
-          renderer: {
-            type: "simple",
-            symbol: {
-              type: "simple-line",
-              color: [140, 90, 45, 255],
-              width: 0.9,
-              style: "solid"
-            }
-          },
-          labelingInfo: [{
-            labelExpression: "[Contour]",
-            labelPlacement: "center-along",
-            symbol: {
-              type: "text",
-              color: [120, 78, 40, 255],
-              haloColor: [255, 255, 240, 200],
-              haloSize: 0.8,
-              font: { size: 5, family: "Tahoma", weight: "normal" }
+        sublayers: [
+          {
+            id: 1,
+            minScale: 50000,
+            renderer: {
+              type: "simple",
+              symbol: {
+                type: "simple-line",
+                color: [168, 120, 60, 200],
+                width: 0.4,
+                style: "solid"
+              }
             },
-            minScale: 75000,
-            maxScale: 50000
-          }]
-        }]
-      });
-
-      var contours10mLayer = new MapImageLayer({
-        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Contours/MapServer",
-        id: "contours-10m",
-        title: "Contours – 10 m",
-        opacity: 0.55,
-        imageFormat: "png32",
-        sublayers: [{
-          id: 1,
-          minScale: 50000,
-          renderer: {
-            type: "simple",
-            symbol: {
-              type: "simple-line",
-              color: [168, 120, 60, 200],
-              width: 0.4,
-              style: "solid"
-            }
+            labelingInfo: [{
+              labelExpression: "[Contour]",
+              labelPlacement: "center-along",
+              symbol: {
+                type: "text",
+                color: [140, 95, 50, 230],
+                haloColor: [255, 255, 240, 180],
+                haloSize: 0.8,
+                font: { size: 5, family: "Tahoma" }
+              },
+              minScale: 24000
+            }]
           },
-          labelingInfo: [{
-            labelExpression: "[Contour]",
-            labelPlacement: "center-along",
-            symbol: {
-              type: "text",
-              color: [140, 95, 50, 230],
-              haloColor: [255, 255, 240, 180],
-              haloSize: 0.8,
-              font: { size: 5, family: "Tahoma" }
+          {
+            id: 0,
+            minScale: 150000,
+            maxScale: 50000,
+            renderer: {
+              type: "simple",
+              symbol: {
+                type: "simple-line",
+                color: [140, 90, 45, 255],
+                width: 0.9,
+                style: "solid"
+              }
             },
-            minScale: 24000
-          }]
-        }]
+            labelingInfo: [{
+              labelExpression: "[Contour]",
+              labelPlacement: "center-along",
+              symbol: {
+                type: "text",
+                color: [120, 78, 40, 255],
+                haloColor: [255, 255, 240, 200],
+                haloSize: 0.8,
+                font: { size: 5, family: "Tahoma", weight: "normal" }
+              },
+              minScale: 75000,
+              maxScale: 50000
+            }]
+          }
+        ]
       });
 
       // ==================================================================
@@ -798,6 +796,7 @@
         id: "railway",
         title: "Railway (NRWN)",
         imageFormat: "png32",
+        minScale: 72000,
         sublayers: [
           {
             id: 0,  // Stations
@@ -943,6 +942,7 @@
         id: "schools",
         title: "Public Schools",
         imageFormat: "png32",
+        minScale: 36000,
         sublayers: [
           {
             id: 1,  // Francophone
@@ -1053,7 +1053,6 @@
         title: "County Labels",
         listMode: "hide",
         imageFormat: "png32",
-        customParameters: { dpi: 192 },
         sublayers: [
           {
             id: 0,
@@ -1124,6 +1123,7 @@
         title: "Railway Labels",
         listMode: "hide",
         imageFormat: "png32",
+        minScale: 36000,
         sublayers: [{
           id: 0,
           minScale: 36000,
@@ -1170,8 +1170,7 @@
           saintJohnParksLayer,
           citiesLayer,
           countiesLayer,         // boundary lines (labels elevated)
-          contours50mLayer,      // 50 m index contours (generalized FeatureLayer)
-          contours10mLayer,      // 10 m contours (generalized FeatureLayer)
+          contoursLayer,         // 50 m + 10 m contours (single request)
           railwayLayer,          // tracks + station dots (labels elevated)
           roadsCasingLayer,
           roadsLayer,
