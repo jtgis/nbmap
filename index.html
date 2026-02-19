@@ -176,6 +176,11 @@
         Provincial Parks
       </label>
       <label class="layer-toggle">
+        <input type="checkbox" data-layer="nationalparks" checked />
+        <span class="swatch" style="background:rgba(76,115,0,0.7);border:1px solid rgba(56,90,0,0.8);"></span>
+        National Parks
+      </label>
+      <label class="layer-toggle">
         <input type="checkbox" data-layer="crownland" checked />
         <span class="swatch" style="background:rgba(180,215,158,0.5);"></span>
         Crown Land
@@ -359,6 +364,7 @@
           {
             id: 13,  // Water Bodies – polygons
             title: "Water Bodies",
+            labelsVisible: false,
             renderer: {
               type: "simple",
               symbol: {
@@ -371,6 +377,7 @@
           {
             id: 12,  // Islands
             title: "Islands",
+            labelsVisible: false,
             renderer: {
               type: "simple",
               symbol: {
@@ -383,6 +390,7 @@
           {
             id: 11,  // Wetlands
             title: "Wetlands",
+            labelsVisible: false,
             renderer: {
               type: "simple",
               symbol: {
@@ -395,6 +403,7 @@
           {
             id: 10,  // Water Courses – lines
             title: "Water Courses",
+            labelsVisible: false,
             minScale: 500000,
             renderer: {
               type: "simple",
@@ -408,6 +417,7 @@
           {
             id: 16,  // Coastal Features
             title: "Coastal Features",
+            labelsVisible: false,
             renderer: {
               type: "simple",
               symbol: {
@@ -418,6 +428,73 @@
             }
           }
         ]
+      });
+
+      // ==================================================================
+      //  3a. NATIONAL PARKS  (Fundy & Kouchibouguac, clipped to NB)
+      //      Canada-wide CLSS service filtered to jurisdiction='NB',
+      //      then clipped via GroupLayer + destination-in mask.
+      //      Same dark green as provincial parks.
+      // ==================================================================
+      var nationalParksRaw = new MapImageLayer({
+        url: "https://proxyinternet.nrcan-rncan.gc.ca/arcgis/rest/services/CLSS-SATC/CLSS_Administrative_Boundaries/MapServer",
+        title: "National Parks (raw)",
+        opacity: 1,
+        imageFormat: "png32",
+        sublayers: [{
+          id: 1,
+          definitionExpression: "jurisdiction = 'NB'",
+          renderer: {
+            type: "simple",
+            symbol: {
+              type: "simple-fill",
+              color: rgba(76, 115, 0, 255),
+              outline: {
+                type: "simple-line",
+                color: rgba(56, 90, 0, 200),
+                width: 1.4
+              }
+            }
+          },
+          labelingInfo: [{
+            labelExpression: "[adminAreaNameEng]",
+            labelPlacement: "always-horizontal",
+            symbol: {
+              type: "text",
+              color: [56, 90, 0, 255],
+              haloColor: [255, 255, 255, 200],
+              haloSize: 1.0,
+              font: { size: 7, family: "Georgia", weight: "bold", style: "italic" }
+            },
+            minScale: 500000,
+            maxScale: 0
+          }]
+        }]
+      });
+
+      var nationalParksClipMask = new MapImageLayer({
+        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Counties/MapServer",
+        title: "NP Clip Mask",
+        imageFormat: "png32",
+        blendMode: "destination-in",
+        sublayers: [{
+          id: 0,
+          renderer: {
+            type: "simple",
+            symbol: {
+              type: "simple-fill",
+              color: [0, 0, 0, 255],
+              outline: null
+            }
+          }
+        }]
+      });
+
+      var nationalParksLayer = new GroupLayer({
+        id: "nationalparks",
+        title: "National Parks",
+        opacity: 0.6,
+        layers: [nationalParksRaw, nationalParksClipMask]
       });
 
       // ==================================================================
@@ -580,6 +657,7 @@
           {
             id: 0,  // Counties
             title: "Counties",
+            labelsVisible: false,
             minScale: 3000000,
             maxScale: 0,          // draw all the way to max zoom
             renderer: {
@@ -628,6 +706,7 @@
           {
             id: 1,  // Parishes
             title: "Parishes",
+            labelsVisible: false,
             minScale: 500000,
             maxScale: 0,          // draw all the way to max zoom
             renderer: {
@@ -707,6 +786,7 @@
           {
             id: 0,  // 50 m index contours
             title: "Contours – 50 m",
+            labelsVisible: false,
             minScale: 150000,
             maxScale: 50000,
             renderer: {
@@ -735,6 +815,7 @@
           {
             id: 1,  // 10 m intermediate contours
             title: "Contours – 10 m",
+            labelsVisible: false,
             minScale: 50000,
             renderer: {
               type: "simple",
@@ -938,6 +1019,7 @@
           {
             id: 0,  // Stations
             title: "Railway Stations",
+            labelsVisible: false,
             minScale: 36000,
             renderer: {
               type: "simple",
@@ -1147,29 +1229,231 @@
       });
 
       // ==================================================================
+      //  LABEL REFERENCE LAYERS
+      //  Labels are rendered as part of each MapImageLayer's server image,
+      //  so they draw at the layer's stack position.  To elevate labels
+      //  above roads / buildings, we create lightweight reference layers
+      //  with invisible geometry but active labeling, and stack them high.
+      //  The original geometry layers have labelsVisible: false.
+      // ==================================================================
+
+      // Contour labels — elevation values above road lines
+      var contoursLabelsLayer = new MapImageLayer({
+        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Contours/MapServer",
+        id: "contours-labels",
+        title: "Contour Labels",
+        listMode: "hide",
+        opacity: 0.55,
+        imageFormat: "png32",
+        customParameters: { dpi: 192 },
+        sublayers: [
+          {
+            id: 0,
+            minScale: 150000,
+            maxScale: 50000,
+            renderer: {
+              type: "simple",
+              symbol: { type: "simple-line", color: [0,0,0,0], width: 0.001 }
+            },
+            labelingInfo: [{
+              labelExpression: "[Contour]",
+              labelPlacement: "center-along",
+              symbol: {
+                type: "text",
+                color: [120, 78, 40, 255],
+                haloColor: [255, 255, 240, 200],
+                haloSize: 0.8,
+                font: { size: 5, family: "Tahoma", weight: "normal" }
+              },
+              minScale: 75000,
+              maxScale: 50000
+            }]
+          },
+          {
+            id: 1,
+            minScale: 50000,
+            renderer: {
+              type: "simple",
+              symbol: { type: "simple-line", color: [0,0,0,0], width: 0.001 }
+            },
+            labelingInfo: [{
+              labelExpression: "[Contour]",
+              labelPlacement: "center-along",
+              symbol: {
+                type: "text",
+                color: [140, 95, 50, 230],
+                haloColor: [255, 255, 240, 180],
+                haloSize: 0.8,
+                font: { size: 5, family: "Tahoma" }
+              },
+              minScale: 24000
+            }]
+          }
+        ]
+      });
+
+      // Hydro labels — water body & stream names (server defaults)
+      var hydroLabelsLayer = new MapImageLayer({
+        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_DNR_NBHN/MapServer",
+        id: "hydro-labels",
+        title: "Hydro Labels",
+        listMode: "hide",
+        imageFormat: "png32",
+        sublayers: [
+          {
+            id: 13,
+            renderer: {
+              type: "simple",
+              symbol: { type: "simple-fill", color: [0,0,0,0], outline: null }
+            }
+          },
+          {
+            id: 10,
+            minScale: 500000,
+            renderer: {
+              type: "simple",
+              symbol: { type: "simple-line", color: [0,0,0,0], width: 0.001 }
+            }
+          }
+        ]
+      });
+
+      // County & Parish labels — administrative names
+      var countiesLabelsLayer = new MapImageLayer({
+        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Counties/MapServer",
+        id: "counties-labels",
+        title: "County Labels",
+        listMode: "hide",
+        imageFormat: "png32",
+        customParameters: { dpi: 192 },
+        sublayers: [
+          {
+            id: 0,
+            minScale: 3000000,
+            maxScale: 0,
+            renderer: {
+              type: "simple",
+              symbol: { type: "simple-fill", color: [0,0,0,0], outline: null }
+            },
+            labelingInfo: [
+              {
+                labelExpression: "[ENG_NAME]",
+                labelPlacement: "always-horizontal",
+                symbol: {
+                  type: "text",
+                  color: [85, 55, 35, 255],
+                  haloColor: [255, 255, 255, 210],
+                  haloSize: 1.0,
+                  font: { size: 7, weight: "bold", family: "Georgia" }
+                },
+                minScale: 3000000,
+                maxScale: 200000
+              },
+              {
+                labelExpression: "[ENG_NAME]",
+                labelPlacement: "always-horizontal",
+                symbol: {
+                  type: "text",
+                  color: [100, 70, 50, 180],
+                  haloColor: [255, 255, 255, 180],
+                  haloSize: 0.7,
+                  font: { size: 5, weight: "normal", family: "Georgia" }
+                },
+                minScale: 200000,
+                maxScale: 0
+              }
+            ]
+          },
+          {
+            id: 1,
+            minScale: 500000,
+            maxScale: 0,
+            renderer: {
+              type: "simple",
+              symbol: { type: "simple-fill", color: [0,0,0,0], outline: null }
+            },
+            labelingInfo: [{
+              labelExpression: "[ENG_NAME]",
+              labelPlacement: "always-horizontal",
+              symbol: {
+                type: "text",
+                color: [120, 90, 70, 160],
+                haloColor: [255, 255, 255, 160],
+                haloSize: 0.7,
+                font: { size: 5, weight: "normal", family: "Georgia" }
+              },
+              minScale: 150000,
+              maxScale: 0
+            }]
+          }
+        ]
+      });
+
+      // Railway station labels
+      var railwayLabelsLayer = new MapImageLayer({
+        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_NRWN/MapServer",
+        id: "railway-labels",
+        title: "Railway Labels",
+        listMode: "hide",
+        imageFormat: "png32",
+        sublayers: [{
+          id: 0,
+          minScale: 36000,
+          renderer: {
+            type: "simple",
+            symbol: {
+              type: "simple-marker",
+              size: 0,
+              color: [0,0,0,0],
+              outline: null
+            }
+          },
+          labelingInfo: [{
+            labelExpression: "[STNENNAME]",
+            labelPlacement: "above-right",
+            symbol: {
+              type: "text",
+              color: [50, 50, 50, 255],
+              haloColor: [255, 255, 255, 220],
+              haloSize: 1.0,
+              font: { size: 7, family: "Arial", weight: "normal" }
+            },
+            minScale: 24000,
+            maxScale: 0
+          }]
+        }]
+      });
+
+      // ==================================================================
       //  ASSEMBLE MAP
       // ==================================================================
       var map = new Map({
         layers: [
-          hillshadeLayer,   // bottommost — subtle terrain background
-          landCoverLayer,   // subdued land cover tint
-          hydroLayer,
+          hillshadeLayer,        // bottommost — subtle terrain background
+          landCoverLayer,        // subdued land cover tint
+          hydroLayer,            // water geometry (labels elevated)
           crownLandLayer,
           wildlifeRefugesLayer,
+          nationalParksLayer,
           parksLayer,
           frederictonParksLayer,
           monctonParksLayer,
           saintJohnParksLayer,
           citiesLayer,
-          countiesLayer,
-          contoursLayer,
-          railwayLayer,
+          countiesLayer,         // boundary lines (labels elevated)
+          contoursLayer,         // contour lines (labels elevated)
+          railwayLayer,          // tracks + station dots (labels elevated)
           roadsCasingLayer,
           roadsLayer,
           parcelsLayer,
           buildingsLayer,
-          schoolsLayer,
-          placeNamesLayer   // topmost → labels draw over all other layers
+          // ── Label reference layers (above all geometry) ──
+          contoursLabelsLayer,   // contour values
+          hydroLabelsLayer,      // water body & stream names
+          countiesLabelsLayer,   // county & parish names
+          railwayLabelsLayer,    // station names
+          schoolsLayer,          // school markers + labels
+          placeNamesLayer        // topmost → place names over all
         ]
       });
 
@@ -1228,6 +1512,26 @@
           if (layerId === "roads") {
             var casing = map.allLayers.find(function (l) { return l.id === "roadscasing"; });
             if (casing) casing.visible = this.checked;
+          }
+          // Counties toggle also controls the elevated label layer
+          if (layerId === "counties") {
+            var countiesLbl = map.allLayers.find(function (l) { return l.id === "counties-labels"; });
+            if (countiesLbl) countiesLbl.visible = this.checked;
+          }
+          // Hydro toggle also controls the elevated label layer
+          if (layerId === "hydro") {
+            var hydroLbl = map.allLayers.find(function (l) { return l.id === "hydro-labels"; });
+            if (hydroLbl) hydroLbl.visible = this.checked;
+          }
+          // Contours toggle also controls the elevated label layer
+          if (layerId === "contours") {
+            var contoursLbl = map.allLayers.find(function (l) { return l.id === "contours-labels"; });
+            if (contoursLbl) contoursLbl.visible = this.checked;
+          }
+          // Railway toggle also controls the elevated label layer
+          if (layerId === "railway") {
+            var railwayLbl = map.allLayers.find(function (l) { return l.id === "railway-labels"; });
+            if (railwayLbl) railwayLbl.visible = this.checked;
           }
           // Local parks toggle controls both Fredericton and Moncton park layers
           if (layerId === "localparks") {
