@@ -431,70 +431,41 @@
       });
 
       // ==================================================================
-      //  3a. NATIONAL PARKS  (Fundy & Kouchibouguac, clipped to NB)
-      //      Canada-wide CLSS service filtered to jurisdiction='NB',
-      //      then clipped via GroupLayer + destination-in mask.
-      //      Same dark green as provincial parks.
+      //  3a. NATIONAL PARKS  (Fundy & Kouchibouguac)
+      //      FeatureLayer from CLSS service, filtered to NB.
+      //      Slightly darker green than provincial parks.
       // ==================================================================
-      var nationalParksRaw = new MapImageLayer({
-        url: "https://proxyinternet.nrcan-rncan.gc.ca/arcgis/rest/services/CLSS-SATC/CLSS_Administrative_Boundaries/MapServer",
-        title: "National Parks (raw)",
-        opacity: 1,
-        imageFormat: "png32",
-        sublayers: [{
-          id: 1,
-          definitionExpression: "jurisdiction = 'NB'",
-          renderer: {
-            type: "simple",
-            symbol: {
-              type: "simple-fill",
-              color: rgba(76, 115, 0, 255),
-              outline: {
-                type: "simple-line",
-                color: rgba(56, 90, 0, 200),
-                width: 1.4
-              }
-            }
-          },
-          labelingInfo: [{
-            labelExpression: "[adminAreaNameEng]",
-            labelPlacement: "always-horizontal",
-            symbol: {
-              type: "text",
-              color: [56, 90, 0, 255],
-              haloColor: [255, 255, 255, 200],
-              haloSize: 1.0,
-              font: { size: 7, family: "Georgia", weight: "bold", style: "italic" }
-            },
-            minScale: 500000,
-            maxScale: 0
-          }]
-        }]
-      });
-
-      var nationalParksClipMask = new MapImageLayer({
-        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Counties/MapServer",
-        title: "NP Clip Mask",
-        imageFormat: "png32",
-        blendMode: "destination-in",
-        sublayers: [{
-          id: 0,
-          renderer: {
-            type: "simple",
-            symbol: {
-              type: "simple-fill",
-              color: [0, 0, 0, 255],
-              outline: null
-            }
-          }
-        }]
-      });
-
-      var nationalParksLayer = new GroupLayer({
+      var nationalParksLayer = new FeatureLayer({
+        url: "https://proxyinternet.nrcan-rncan.gc.ca/arcgis/rest/services/CLSS-SATC/CLSS_Administrative_Boundaries/MapServer/1",
         id: "nationalparks",
         title: "National Parks",
+        definitionExpression: "jurisdiction = 'NB'",
         opacity: 0.6,
-        layers: [nationalParksRaw, nationalParksClipMask]
+        renderer: {
+          type: "simple",
+          symbol: {
+            type: "simple-fill",
+            color: [56, 90, 0, 255],          // slightly darker than prov parks [76,115,0]
+            outline: {
+              type: "simple-line",
+              color: [40, 70, 0, 200],
+              width: 1.4
+            }
+          }
+        },
+        labelingInfo: [{
+          labelExpressionInfo: { expression: "$feature.adminAreaNameEng" },
+          labelPlacement: "always-horizontal",
+          symbol: {
+            type: "text",
+            color: [40, 70, 0, 255],
+            haloColor: [255, 255, 255, 200],
+            haloSize: 1.0,
+            font: { size: 7, family: "Georgia", weight: "bold", style: "italic" }
+          },
+          minScale: 500000,
+          maxScale: 0
+        }]
       });
 
       // ==================================================================
