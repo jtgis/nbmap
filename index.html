@@ -27,236 +27,14 @@
       bottom: 0;
     }
 
-    /* ── Title bar (mirrors WA DOR clean header) ── */
-    #titleBar {
-      position: absolute;
-      top: 12px;
-      left: 60px;
-      z-index: 99;
-      background: rgba(255, 255, 255, 0.92);
-      padding: 8px 18px;
-      border-radius: 4px;
-      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
-    }
-    #titleBar h1 {
-      margin: 0;
-      font-size: 16px;
-      font-weight: 600;
-      color: #333;
-    }
-    #titleBar p {
-      margin: 2px 0 0;
-      font-size: 11px;
-      color: #777;
-    }
 
-    /* ── Layer‑toggle panel ── */
-    #layerPanel {
-      position: absolute;
-      top: 12px;
-      right: 12px;
-      z-index: 99;
-      background: rgba(255, 255, 255, 0.94);
-      padding: 10px 14px;
-      border-radius: 4px;
-      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
-      max-height: calc(100vh - 60px);
-      overflow-y: auto;
-      min-width: 200px;
-    }
-    #layerPanel h2 {
-      margin: 0 0 8px;
-      font-size: 13px;
-      font-weight: 600;
-      color: #333;
-      border-bottom: 1px solid #ddd;
-      padding-bottom: 4px;
-    }
-    .layer-group {
-      margin-bottom: 6px;
-    }
-    .layer-group-title {
-      font-size: 11px;
-      font-weight: 600;
-      color: #555;
-      margin: 6px 0 2px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-    .layer-toggle {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      padding: 2px 0;
-      font-size: 12px;
-      color: #444;
-      cursor: pointer;
-    }
-    .layer-toggle input[type="checkbox"] {
-      accent-color: #73600a;
-    }
-    .swatch {
-      display: inline-block;
-      width: 12px;
-      height: 12px;
-      border-radius: 2px;
-      border: 1px solid rgba(0,0,0,0.15);
-      flex-shrink: 0;
-    }
-
-    /* ── Full-extent button ── */
-    #fullExtentBtn {
-      display: flex;
-      align-items: center;
-      gap: 5px;
-      margin: 10px 0 4px;
-      padding: 6px 10px;
-      width: 100%;
-      background: #4c7300;
-      color: #fff;
-      border: none;
-      border-radius: 3px;
-      font-size: 12px;
-      font-weight: 600;
-      cursor: pointer;
-      box-sizing: border-box;
-    }
-    #fullExtentBtn:hover { background: #3a5800; }
-    #fullExtentBtn svg { flex-shrink: 0; }
   </style>
 </head>
 <body>
 
   <div id="viewDiv"></div>
 
-  <!-- Title banner -->
-  <div id="titleBar">
-    <h1>New Brunswick — Base Map</h1>
-    <p>GeoNB data · WA DOR cartographic style</p>
-  </div>
 
-  <!-- Layer toggles -->
-  <div id="layerPanel">
-    <h2>Layers</h2>
-
-    <div class="layer-group">
-      <div class="layer-group-title">Boundaries</div>
-      <label class="layer-toggle">
-        <input type="checkbox" data-layer="counties" checked />
-        <span class="swatch" style="background:#732600;"></span>
-        Counties &amp; Parishes
-      </label>
-      <label class="layer-toggle">
-        <input type="checkbox" data-layer="cities" checked />
-        <span class="swatch" style="background:rgba(252,210,218,0.7);"></span>
-        Cities (SJ / Fred / Monc)
-      </label>
-    </div>
-
-    <div class="layer-group">
-      <div class="layer-group-title">Environment</div>
-      <label class="layer-toggle">
-        <input type="checkbox" data-layer="hillshade" checked />
-        <span class="swatch" style="background:linear-gradient(135deg, #ccc 30%, #999 70%);"></span>
-        Hillshade (LiDAR)
-      </label>
-      <label class="layer-toggle">
-        <input type="checkbox" data-layer="landcover" checked />
-        <span class="swatch" style="background:linear-gradient(135deg, #5a8a3c 40%, #c8b464 60%);"></span>
-        Land Cover (NRCan)
-      </label>
-      <label class="layer-toggle">
-        <input type="checkbox" data-layer="hydro" checked />
-        <span class="swatch" style="background:#9ebbd7;"></span>
-        Hydrography (NBHN)
-      </label>
-      <label class="layer-toggle">
-        <input type="checkbox" data-layer="parks" checked />
-        <span class="swatch" style="background:rgba(76,115,0,0.6);"></span>
-        Provincial Parks
-      </label>
-      <label class="layer-toggle">
-        <input type="checkbox" data-layer="nationalparks" checked />
-        <span class="swatch" style="background:rgba(76,115,0,0.7);border:1px solid rgba(56,90,0,0.8);"></span>
-        National Parks
-      </label>
-      <label class="layer-toggle">
-        <input type="checkbox" data-layer="crownland" checked />
-        <span class="swatch" style="background:rgba(180,215,158,0.5);"></span>
-        Crown Land
-      </label>
-      <label class="layer-toggle">
-        <input type="checkbox" data-layer="wildlife" checked />
-        <span class="swatch" style="background:rgba(76,115,0,0.6);"></span>
-        Wildlife Refuges
-      </label>
-      <label class="layer-toggle">
-        <input type="checkbox" data-layer="localparks" checked />
-        <span class="swatch" style="background:rgba(144,199,94,0.7);"></span>
-        Local Parks (SJ / Fred / Monc)
-      </label>
-    </div>
-
-    <div class="layer-group">
-      <div class="layer-group-title">Terrain</div>
-      <label class="layer-toggle">
-        <input type="checkbox" data-layer="contours" checked />
-        <span class="swatch" style="background:transparent;border-bottom:2px solid #8c5a2d;height:10px;"></span>
-        Contours (50 m / 10 m)
-      </label>
-    </div>
-
-    <div class="layer-group">
-      <div class="layer-group-title">Transportation</div>
-      <label class="layer-toggle">
-        <input type="checkbox" data-layer="roads" checked />
-        <span class="swatch" style="background:linear-gradient(135deg, #e64c00 50%, #ffaa00 50%);border:1px solid #8a6e14;"></span>
-        Road Network (NBRN)
-      </label>
-      <label class="layer-toggle">
-        <input type="checkbox" data-layer="railway" checked />
-        <span class="swatch" style="background:#323232;border-radius:0;"></span>
-        Railway (NRWN)
-      </label>
-    </div>
-
-    <div class="layer-group">
-      <div class="layer-group-title">Cadastral</div>
-      <label class="layer-toggle">
-        <input type="checkbox" data-layer="parcels" checked />
-        <span class="swatch" style="background:transparent;border:1px solid #b2b2b2;"></span>
-        Parcels
-      </label>
-      <label class="layer-toggle">
-        <input type="checkbox" data-layer="buildings" checked />
-        <span class="swatch" style="background:rgba(160,110,70,0.4);border:1px solid rgba(130,85,50,0.6);"></span>
-        Buildings
-      </label>
-    </div>
-
-    <div class="layer-group">
-      <div class="layer-group-title">Facilities</div>
-      <label class="layer-toggle">
-        <input type="checkbox" data-layer="schools" checked />
-        <span class="swatch" style="background:#4682b4;"></span>
-        Public Schools
-      </label>
-    </div>
-
-    <div class="layer-group">
-      <div class="layer-group-title">Labels</div>
-      <label class="layer-toggle">
-        <input type="checkbox" data-layer="placenames" checked />
-        <span class="swatch" style="background:#333;color:#fff;font-size:9px;text-align:center;line-height:12px;">A</span>
-        Place Names
-      </label>
-    </div>
-
-    <button id="fullExtentBtn" title="Zoom to full extent of New Brunswick">
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="1" y="1" width="14" height="14" rx="2"/><polyline points="1,6 1,1 6,1"/><polyline points="10,1 15,1 15,6"/><polyline points="15,10 15,15 10,15"/><polyline points="6,15 1,15 1,10"/></svg>
-      Full Extent of NB
-    </button>
-  </div>
 
   <script>
     require([
@@ -267,11 +45,10 @@
       "esri/layers/ImageryLayer",
       "esri/layers/GroupLayer",
       "esri/widgets/ScaleBar",
-      "esri/widgets/Legend",
       "esri/widgets/Expand"
     ], function (
       Map, MapView, MapImageLayer, FeatureLayer, ImageryLayer, GroupLayer,
-      ScaleBar, Legend, Expand
+      ScaleBar, Expand
     ) {
 
       /* ============================================================
@@ -1455,81 +1232,9 @@
       });
       view.ui.add(scaleBar, "bottom-left");
 
-      // ── Legend inside an Expand widget ──
-      var legend = new Legend({ view: view });
-      var legendExpand = new Expand({
-        view: view,
-        content: legend,
-        expanded: false,
-        expandTooltip: "Legend"
-      });
-      view.ui.add(legendExpand, "bottom-right");
 
-      // ==================================================================
-      //  LAYER TOGGLE WIRING
-      // ==================================================================
-      document.querySelectorAll("#layerPanel input[type=checkbox]").forEach(function (cb) {
-        cb.addEventListener("change", function () {
-          var layerId = this.getAttribute("data-layer");
-          var layer = map.allLayers.find(function (l) { return l.id === layerId; });
-          // Also check basemap layers
-          if (!layer) {
-            layer = map.basemap.baseLayers.find(function (l) { return l.id === layerId; });
-          }
-          if (layer) {
-            layer.visible = this.checked;
-          }
-          // Roads toggle also controls the casing layer
-          if (layerId === "roads") {
-            var casing = map.allLayers.find(function (l) { return l.id === "roadscasing"; });
-            if (casing) casing.visible = this.checked;
-          }
-          // Counties toggle also controls the elevated label layer
-          if (layerId === "counties") {
-            var countiesLbl = map.allLayers.find(function (l) { return l.id === "counties-labels"; });
-            if (countiesLbl) countiesLbl.visible = this.checked;
-          }
-          // Hydro toggle also controls the elevated label layer
-          if (layerId === "hydro") {
-            var hydroLbl = map.allLayers.find(function (l) { return l.id === "hydro-labels"; });
-            if (hydroLbl) hydroLbl.visible = this.checked;
-          }
-          // Contours toggle also controls the elevated label layer
-          if (layerId === "contours") {
-            var contoursLbl = map.allLayers.find(function (l) { return l.id === "contours-labels"; });
-            if (contoursLbl) contoursLbl.visible = this.checked;
-          }
-          // Railway toggle also controls the elevated label layer
-          if (layerId === "railway") {
-            var railwayLbl = map.allLayers.find(function (l) { return l.id === "railway-labels"; });
-            if (railwayLbl) railwayLbl.visible = this.checked;
-          }
-          // Local parks toggle controls both Fredericton and Moncton park layers
-          if (layerId === "localparks") {
-            var fredParks = map.allLayers.find(function (l) { return l.id === "localparks-fredericton"; });
-            var moncParks = map.allLayers.find(function (l) { return l.id === "localparks-moncton"; });
-            var sjParks = map.allLayers.find(function (l) { return l.id === "localparks-saintjohn"; });
-            if (fredParks) fredParks.visible = this.checked;
-            if (moncParks) moncParks.visible = this.checked;
-            if (sjParks) sjParks.visible = this.checked;
-          }
-        });
-      });
 
-      // ==================================================================
-      //  FULL EXTENT BUTTON  — zoom / pan to all of New Brunswick
-      // ==================================================================
-      var NB_EXTENT = {
-        xmin: -69.06,
-        ymin: 44.56,
-        xmax: -63.77,
-        ymax: 48.07,
-        spatialReference: { wkid: 4326 }
-      };
 
-      document.getElementById("fullExtentBtn").addEventListener("click", function () {
-        view.goTo(NB_EXTENT, { duration: 800, easing: "ease-in-out" });
-      });
 
       // ==================================================================
       //  POPUP CONFIG  (clean, informational — WA DOR style)
