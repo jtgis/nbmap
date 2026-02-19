@@ -3,1148 +3,382 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>New Brunswick Base Map — WA DOR Style</title>
+  <title>New Brunswick Base Map — Esri Leaflet</title>
 
-  <!-- ArcGIS JS API 4.x -->
-  <link rel="stylesheet" href="https://js.arcgis.com/4.28/esri/themes/light/main.css" />
-  <script src="https://js.arcgis.com/4.28/"></script>
+  <!-- Leaflet 1.9.4 -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- Esri Leaflet 3.0.12 -->
+  <script src="https://unpkg.com/esri-leaflet@3.0.12/dist/esri-leaflet.js"></script>
 
   <style>
     html, body {
-      margin: 0;
-      padding: 0;
-      height: 100%;
-      width: 100%;
+      margin: 0; padding: 0; height: 100%; width: 100%;
       font-family: "Avenir Next", "Helvetica Neue", Helvetica, Arial, sans-serif;
       overflow: hidden;
     }
-
-    #viewDiv {
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
+    #map {
+      position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+      background: #f0f0f0;
     }
-
   </style>
 </head>
 <body>
-
-  <div id="viewDiv"></div>
+  <div id="map"></div>
 
   <script>
-    require([
-      "esri/Map",
-      "esri/views/MapView",
-      "esri/layers/MapImageLayer",
-      "esri/layers/FeatureLayer",
-      "esri/layers/ImageryLayer",
-      "esri/layers/GroupLayer",
-      "esri/widgets/ScaleBar",
-      "esri/widgets/Expand",
-      "esri/widgets/LayerList"
-    ], function (
-      Map, MapView, MapImageLayer, FeatureLayer, ImageryLayer, GroupLayer,
-      ScaleBar, Expand, LayerList
-    ) {
+    // ── Map ──
+    var map = L.map('map', {
+      center: [46.5, -66.5],
+      zoom: 8,
+      minZoom: 2,
+      maxZoom: 19
+    });
 
-      /* ============================================================
-         COLOR PALETTE — extracted from WA DOR WADOR_Base_Map
-         ============================================================
-         State fill           : [225, 225, 225]  #E1E1E1
-         County outline       : [115,  38,   0]  #732600  width 2
-         Water bodies         : [158, 187, 215]  #9EBBD7
-         Parks / open space   : [ 76, 115,   0]  #4C7300  @ 40 % transparency
-         Road casing (shadow) : dark gray / brown tones
-         Road fill            : warm tan / amber for major, lighter for minor
-         Parcels              : thin brown outline
-         Background (page)    : white / very light gray
-        ============================================================ */
+    // ── Custom panes for draw order ──
+    var panes = [
+      ['hillshadeP', 200], ['landcoverP', 201], ['hydroP', 210],
+      ['crownlandP', 215], ['wildlifeP', 216], ['natparksP', 217],
+      ['parksP', 218], ['localparksP', 219], ['citiesP', 225],
+      ['countiesP', 230], ['contoursP', 235], ['railwayP', 238],
+      ['casingP', 240], ['roadsP', 245], ['roadsMidP', 246],
+      ['roadsTopP', 247], ['parcelsP', 250], ['buildingsP', 255],
+      ['placenamesP', 260]
+    ];
+    panes.forEach(function (p) {
+      map.createPane(p[0]);
+      map.getPane(p[0]).style.zIndex = p[1];
+    });
+    map.getPane('hillshadeP').style.mixBlendMode = 'multiply';
 
-      // ─── Helper: RGBA array → CSS ───
-      function rgba(r, g, b, a) { return [r, g, b, a !== undefined ? a : 255]; }
-
-      // ==================================================================
-      //  1.  HILLSHADE — LiDAR 1 m DEM  (WA DOR "Landform" style)
-      //      WA DOR uses SRTM + DOT hillshades as subtle gray terrain
-      //      under all other layers from ~1:7 M down to ~1:36 K.
-      //      NB LiDAR is 1 m so we can keep it at fine scales.
-      //      Multiply blend darkens shadows; opacity keeps it subtle.
-      // ==================================================================
-      var hillshadeLayer = new ImageryLayer({
-        url: "https://gis-erd-der.gnb.ca/server/rest/services/LidarProducts/Hillshade_45/ImageServer",
-        id: "hillshade",
-        title: "Hillshade (LiDAR)",
-        opacity: 0.2,
-        blendMode: "multiply",
-        minScale: 7000000,
-        format: "jpgpng"
-      });
-
-      // ==================================================================
-      //  1b. LAND COVER — NRCan 30 m (2010)
-      //      Subtle colour wash showing forest / wetland / cropland etc.
-      //      Very low opacity so it tints without dominating.
-      // ==================================================================
-      var landCoverRaw = new MapImageLayer({
-        url: "https://geoappext.nrcan.gc.ca/arcgis/rest/services/FGP/LandCover_EN/MapServer",
-        title: "Land Cover (NRCan)",
-        opacity: 1,
-        imageFormat: "png32",
-        sublayers: [{ id: 0 }]
-      });
-
-      // Mask layer — all NB counties rendered as solid opaque fill;
-      // blendMode "destination-in" keeps only the land-cover pixels
-      // that overlap NB territory (including Grand Manan & islands).
-      // FeatureLayer renders client-side so it ignores the service's
-      // built-in scale limit — draws at every zoom.  Only 15 polygons
-      // so the geometry download is negligible.
-      var nbClipMask = new FeatureLayer({
-        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Counties/MapServer/0",
-        title: "NB Clip Mask",
-        outFields: [],
-        labelsVisible: false,
-        minScale: 0,
-        maxScale: 0,
-        blendMode: "destination-in",
-        renderer: {
-          type: "simple",
-          symbol: {
-            type: "simple-fill",
-            color: [0, 0, 0, 255],
-            outline: null
-          }
-        }
-      });
-
-      // GroupLayer isolates the blend so the mask only clips
-      // the land cover, not the rest of the map.
-      var landCoverLayer = new GroupLayer({
-        id: "landcover",
-        title: "Land Cover (NRCan)",
-        listMode: "hide-children",
-        opacity: 0.15,
-        layers: [landCoverRaw, nbClipMask]
-      });
-
-      // ==================================================================
-      //  2.  HYDROGRAPHY — NBHN  (Water: #9EBBD7)
-      //      Single MapImageLayer with water bodies, courses, coast,
-      //      and wetlands (blue hash).  Islands omitted.
-      // ==================================================================
-      var hydroLayer = new MapImageLayer({
-        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_DNR_NBHN/MapServer",
-        id: "hydro",
-        title: "Hydrography (NBHN)",
-        listMode: "hide-children",
-        imageFormat: "png32",
-        sublayers: [
-          {
-            id: 11,  // Wetlands — blue diagonal hash
-            title: "Wetlands",
-            minScale: 250000,
-            renderer: {
-              type: "simple",
-              symbol: {
-                type: "simple-fill",
-                color: [130, 175, 210, 160],
-                style: "forward-diagonal",
-                outline: {
-                  type: "simple-line",
-                  color: [130, 175, 210, 120],
-                  width: 0.4
-                }
-              }
-            }
-          },
-          {
-            id: 13,  // Water Bodies – polygons
-            title: "Water Bodies",
-            renderer: {
-              type: "simple",
-              symbol: {
-                type: "simple-fill",
-                color: rgba(158, 187, 215, 255),
-                outline: null
-              }
-            }
-          },
-          {
-            id: 10,  // Water Courses – lines
-            title: "Water Courses",
-            minScale: 500000,
-            renderer: {
-              type: "simple",
-              symbol: {
-                type: "simple-line",
-                color: rgba(158, 187, 215, 255),
-                width: 1.4
-              }
-            }
-          },
-          {
-            id: 16,  // Coastal Features
-            title: "Coastal Features",
-            renderer: {
-              type: "simple",
-              symbol: {
-                type: "simple-fill",
-                color: rgba(158, 187, 215, 255),
-                outline: null
-              }
-            }
-          }
-        ]
-      });
-
-      // ==================================================================
-      //  3a. NATIONAL PARKS  (Fundy & Kouchibouguac)
-      //      FeatureLayer from CLSS service, filtered to NB.
-      //      Slightly darker green than provincial parks.
-      // ==================================================================
-      var nationalParksLayer = new FeatureLayer({
-        url: "https://proxyinternet.nrcan-rncan.gc.ca/arcgis/rest/services/CLSS-SATC/CLSS_Administrative_Boundaries/MapServer/1",
-        id: "nationalparks",
-        title: "National Parks",
-        definitionExpression: "jurisdiction = 'NB'",
-        outFields: ["adminAreaNameEng"],
-        opacity: 0.6,
-        renderer: {
-          type: "simple",
-          symbol: {
-            type: "simple-fill",
-            color: [56, 90, 0, 255],          // slightly darker than prov parks [76,115,0]
-            outline: {
-              type: "simple-line",
-              color: [40, 70, 0, 200],
-              width: 1.4
-            }
-          }
-        },
-        labelingInfo: [{
-          labelExpressionInfo: { expression: "$feature.adminAreaNameEng" },
-          labelPlacement: "always-horizontal",
-          symbol: {
-            type: "text",
-            color: [40, 70, 0, 255],
-            haloColor: [255, 255, 255, 200],
-            haloSize: 1.0,
-            font: { size: 7, family: "Georgia", weight: "bold", style: "italic" }
-          },
-          minScale: 500000,
-          maxScale: 0
-        }]
-      });
-
-      // ==================================================================
-      //  3.  PROVINCIAL PARKS  (Open Space: #4C7300 @ 40 % transparency)
-      // ==================================================================
-      var parksLayer = new MapImageLayer({
-        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_DNR_ProvincialParks/MapServer",
-        id: "parks",
-        title: "Provincial Parks",
-        listMode: "hide-children",
-        opacity: 0.6,
-        minScale: 500000,
-        imageFormat: "png32",
-        sublayers: [{
-          id: 0,
-          title: "Provincial Parks",
-          renderer: {
-            type: "simple",
-            symbol: {
-              type: "simple-fill",
-              color: rgba(76, 115, 0, 255),
-              outline: {
-                type: "simple-line",
-                color: rgba(56, 90, 0, 200),
-                width: 1.4
-              }
-            }
-          }
-        }]
-      });
-
-      // ==================================================================
-      //  3c. CROWN LAND — pale green wash for provincial Crown lands
-      // ==================================================================
-      var crownLandLayer = new MapImageLayer({
-        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_DNR_Crown_Land/MapServer",
-        id: "crownland",
-        title: "Crown Land",
-        listMode: "hide-children",
-        opacity: 0.30,
-        minScale: 500000,
-        imageFormat: "png32",
-        sublayers: [{
-          id: 3,
-          title: "Crown Land",
-          renderer: {
-            type: "simple",
-            symbol: {
-              type: "simple-fill",
-              color: [180, 215, 158, 255],       // pale sage green
-              outline: null
-            }
-          }
-        }]
-      });
-
-      // ==================================================================
-      //  3c. WILDLIFE REFUGES — same green as provincial parks
-      // ==================================================================
-      var wildlifeRefugesLayer = new MapImageLayer({
-        url: "https://gis-erd-der.gnb.ca/server/rest/services/OpenData/WildlifeRefuge/MapServer",
-        id: "wildlife",
-        title: "Wildlife Refuges",
-        listMode: "hide-children",
-        opacity: 0.6,
-        imageFormat: "png32",
-        sublayers: [{
-          id: 0,
-          title: "Wildlife Refuges",
-          renderer: {
-            type: "simple",
-            symbol: {
-              type: "simple-fill",
-              color: rgba(76, 115, 0, 255),
-              outline: {
-                type: "simple-line",
-                color: rgba(56, 90, 0, 200),
-                width: 1.2
-              }
-            }
-          }
-        }]
-      });
-
-      // ==================================================================
-      //  3d. LOCAL PARKS — Fredericton & Moncton municipal parks
-      //      Lighter green to distinguish from provincial parks
-      // ==================================================================
-      var frederictonParksLayer = new FeatureLayer({
-        url: "https://services2.arcgis.com/iLWAxhpxafhOza2U/arcgis/rest/services/Park_Open_Space/FeatureServer/0",
-        id: "localparks-fredericton",
-        title: "Fredericton Parks & Open Space",
-        outFields: ["Zones"],
-        opacity: 0.55,
-        minScale: 72000,
-        renderer: {
-          type: "unique-value",
-          field: "Zones",
-          defaultSymbol: {
-            type: "simple-fill",
-            color: [144, 199, 94, 200],
-            outline: { type: "simple-line", color: [100, 160, 60, 200], width: 0.6 }
-          },
-          uniqueValueInfos: [
-            {
-              value: "Park",
-              label: "Park",
-              symbol: {
-                type: "simple-fill",
-                color: [144, 199, 94, 200],
-                outline: { type: "simple-line", color: [100, 160, 60, 200], width: 0.6 }
-              }
-            },
-            {
-              value: "Open Space",
-              label: "Open Space",
-              symbol: {
-                type: "simple-fill",
-                color: [180, 215, 140, 180],
-                outline: { type: "simple-line", color: [130, 180, 90, 180], width: 0.5 }
-              }
-            }
-          ]
-        }
-      });
-
-      var monctonParksLayer = new FeatureLayer({
-        url: "https://services1.arcgis.com/E26PuSoie2Y7bbyI/arcgis/rest/services/Parks/FeatureServer/0",
-        id: "localparks-moncton",
-        title: "Moncton Parks",
-        outFields: [],
-        opacity: 0.55,
-        minScale: 72000,
-        renderer: {
-          type: "simple",
-          symbol: {
-            type: "simple-fill",
-            color: [144, 199, 94, 200],
-            outline: { type: "simple-line", color: [100, 160, 60, 200], width: 0.6 }
-          }
-        }
-      });
-
-      var saintJohnParksLayer = new FeatureLayer({
-        url: "https://services.arcgis.com/DLk7hgTJeJILuEBg/ArcGIS/rest/services/Parks3/FeatureServer/0",
-        id: "localparks-saintjohn",
-        title: "Saint John Parks",
-        outFields: [],
-        opacity: 0.55,
-        minScale: 72000,
-        renderer: {
-          type: "simple",
-          symbol: {
-            type: "simple-fill",
-            color: [144, 199, 94, 200],
-            outline: { type: "simple-line", color: [100, 160, 60, 200], width: 0.6 }
-          }
-        }
-      });
-
-      // ==================================================================
-      //  4.  COUNTIES & PARISHES  (County outline: #732600  2 px)
-      // ==================================================================
-      var countiesLayer = new MapImageLayer({
-        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Counties/MapServer",
-        id: "counties",
-        title: "Counties & Parishes",
-        listMode: "hide-children",
-        imageFormat: "png32",
-        sublayers: [
-          {
-            id: 0,  // Counties
-            title: "Counties",
-            minScale: 3000000,
-            maxScale: 0,          // draw all the way to max zoom
-            renderer: {
-              type: "simple",
-              symbol: {
-                type: "simple-fill",
-                color: [0, 0, 0, 0],             // transparent fill
-                outline: {
-                  type: "simple-line",
-                  color: [100, 65, 45, 190],      // warm taupe — refined, not garish
-                  width: 1.2
-                }
-              }
-            },
-            labelingInfo: [
-              {
-                // Overview labels (province-wide)
-                labelExpression: "[ENG_NAME]",
-                labelPlacement: "always-horizontal",
-                symbol: {
-                  type: "text",
-                  color: [85, 55, 35, 255],
-                  haloColor: [255, 255, 255, 210],
-                  haloSize: 1.0,
-                  font: { size: 7, weight: "bold", family: "Georgia" }
-                },
-                minScale: 3000000,
-                maxScale: 200000
-              },
-              {
-                // Close-up labels — smaller, lighter
-                labelExpression: "[ENG_NAME]",
-                labelPlacement: "always-horizontal",
-                symbol: {
-                  type: "text",
-                  color: [100, 70, 50, 180],
-                  haloColor: [255, 255, 255, 180],
-                  haloSize: 0.7,
-                  font: { size: 5, weight: "normal", family: "Georgia" }
-                },
-                minScale: 200000,
-                maxScale: 0
-              }
-            ]
-          },
-          {
-            id: 1,  // Parishes
-            title: "Parishes",
-            minScale: 500000,
-            maxScale: 0,          // draw all the way to max zoom
-            renderer: {
-              type: "simple",
-              symbol: {
-                type: "simple-fill",
-                color: [0, 0, 0, 0],
-                outline: {
-                  type: "simple-line",
-                  color: [130, 100, 80, 120],     // subtle warm taupe, semi-transparent
-                  width: 0.6,
-                  style: "dash"
-                }
-              }
-            },
-            labelingInfo: [{
-              labelExpression: "[ENG_NAME]",
-              labelPlacement: "always-horizontal",
-              symbol: {
-                type: "text",
-                color: [120, 90, 70, 160],
-                haloColor: [255, 255, 255, 160],
-                haloSize: 0.7,
-                font: { size: 5, weight: "normal", family: "Georgia" }
-              },
-              minScale: 150000,
-              maxScale: 0
-            }]
-          }
-        ]
-      });
-
-      // ==================================================================
-      //  5.  CITIES  (NB 911 Communities — SJ, Fredericton, Moncton)
-      //      Pink fill like WA DOR municipal areas layer
-      // ==================================================================
-      var citiesLayer = new MapImageLayer({
-        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_DPS_NB911_Communities/MapServer",
-        id: "cities",
-        title: "Cities",
-        listMode: "hide-children",
-        opacity: 0.45,
-        imageFormat: "png32",
-        sublayers: [{
-          id: 0,
-          title: "Municipal Areas",
-          definitionExpression: "COMMUNITY_NAME IN ('Saint John','Fredericton','Moncton')",
-          renderer: {
-            type: "simple",
-            symbol: {
-              type: "simple-fill",
-              color: rgba(252, 210, 218, 140),
-              outline: {
-                type: "simple-line",
-                color: rgba(200, 160, 170, 180),
-                width: 1.0
-              }
-            }
-          }
-        }]
-      });
-
-      // ==================================================================
-      //  5b. CONTOURS — MapImageLayer (server-rendered for speed)
-      //      Single layer with both sublayers — one server request.
-      // ==================================================================
-      var contoursLayer = new MapImageLayer({
-        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Contours/MapServer",
-        id: "contours",
-        title: "Contours",
-        listMode: "hide-children",
-        opacity: 0.55,
-        minScale: 150000,
-        imageFormat: "png32",
-        sublayers: [
-          {
-            id: 1,
-            minScale: 50000,
-            renderer: {
-              type: "simple",
-              symbol: {
-                type: "simple-line",
-                color: [168, 120, 60, 200],
-                width: 0.4,
-                style: "solid"
-              }
-            },
-            labelingInfo: [{
-              labelExpression: "[Contour]",
-              labelPlacement: "center-along",
-              symbol: {
-                type: "text",
-                color: [140, 95, 50, 230],
-                haloColor: [255, 255, 240, 180],
-                haloSize: 0.8,
-                font: { size: 5, family: "Tahoma" }
-              },
-              minScale: 9000
-            }]
-          },
-          {
-            id: 0,
-            minScale: 150000,
-            maxScale: 50000,
-            renderer: {
-              type: "simple",
-              symbol: {
-                type: "simple-line",
-                color: [140, 90, 45, 255],
-                width: 0.9,
-                style: "solid"
-              }
-            }
-          }
-        ]
-      });
-
-      // ==================================================================
-      //  6.  ROAD NETWORK — NBRN
-      //      Uses Func_Road_Class unique-value renderer per scale layer,
-      //      mapping NB road classes to WA DOR color palette:
-      //        WA 00 (Interstate)  → NB Freeway           [230,76,0]
-      //        WA 00               → NB Expressway/hwy    [230,76,0]
-      //        WA 01 (US Highway)  → NB Arterial          [255,170,0]
-      //        WA 02 (State Route) → NB Collector         [255,170,0]
-      //        WA 03 (Local)       → NB Local roads       [255,231,115]
-      //        Shadow/casing       → light gray beneath
-      // ==================================================================
-
-      // Shared unique-value info builders keyed by Func_Road_Class
-      function roadUVI(value, color, width, style) {
-        return {
-          value: value,
-          label: value,
-          symbol: {
-            type: "simple-line",
-            color: color,
-            width: width,
-            style: style || "solid"
-          }
-        };
-      }
-
-      // WA DOR palette
-      var cFreeway     = rgba(230, 76, 0, 255);    // Interstate orange-red
-      var cExpressway  = rgba(230, 76, 0, 255);     // same tier
-      var cArterial    = rgba(255, 170, 0, 255);    // amber
-      var cCollector   = rgba(255, 170, 0, 255);    // amber (slightly smaller)
-      var cLocalNum    = rgba(255, 231, 115, 255);  // warm yellow
-      var cLocal       = rgba(200, 200, 200, 255);  // light gray
-      var cLocalGravel = rgba(180, 180, 180, 255);  // slightly darker gray
-      var cRamp        = rgba(220, 200, 160, 255);  // muted
-      var cResource    = rgba(115, 76, 0, 255);     // brown (dashed)
-      var cSpecial     = rgba(160, 160, 160, 255);  // gray
-
-      var roadsLayer = new MapImageLayer({
-        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_Basemap_NBRN/MapServer",
-        id: "roads",
-        title: "Road Network (NBRN)",
-        listMode: "hide-children",
-        imageFormat: "png24",
-        sublayers: [
-          {
-            // ── Small scale (whole province overview) ──
-            // Shows: Freeway, Expressway/highway, Arterial, Collector
-            id: 3,
-            title: "Roads (small scale)",
-            definitionExpression: "Func_Road_Class IN ('Freeway','Expressway/highway','Arterial','Collector')",
-            renderer: {
-              type: "unique-value",
-              field: "Func_Road_Class",
-              defaultSymbol: { type: "simple-line", color: cLocal, width: 0.5 },
-              defaultLabel: "Other",
-              uniqueValueInfos: [
-                roadUVI("Freeway",             cFreeway,    3.0),
-                roadUVI("Expressway/highway",  cExpressway, 2.4),
-                roadUVI("Arterial",            cArterial,   1.4),
-                roadUVI("Collector",           cCollector,  0.9)
-              ]
-            }
-          },
-          {
-            // ── Medium scale (regional) ──
-            // Shows: Freeway, Expressway/highway, Arterial, Collector
-            id: 2,
-            title: "Roads (medium scale)",
-            definitionExpression: "Func_Road_Class IN ('Freeway','Expressway/highway','Arterial','Collector','NBDOT Local Numbered')",
-            renderer: {
-              type: "unique-value",
-              field: "Func_Road_Class",
-              defaultSymbol: { type: "simple-line", color: cLocal, width: 0.6 },
-              defaultLabel: "Other",
-              uniqueValueInfos: [
-                roadUVI("Freeway",             cFreeway,    4.5),
-                roadUVI("Expressway/highway",  cExpressway, 3.5),
-                roadUVI("Arterial",            cArterial,   2.2),
-                roadUVI("Collector",           cCollector,  1.4),
-                roadUVI("NBDOT Local Numbered",cLocalNum,   0.8)
-              ]
-            }
-          },
-          {
-            // ── Large scale (city / detail) ──
-            // Local + minor roads only — arterials & freeways drawn by tier layers above
-            id: 1,
-            title: "Roads (large scale)",
-            definitionExpression: "Func_Road_Class NOT IN ('Freeway','Expressway/highway','Arterial','Collector')",
-            renderer: {
-              type: "unique-value",
-              field: "Func_Road_Class",
-              defaultSymbol: { type: "simple-line", color: [255,255,255,255], width: 1.5 },
-              defaultLabel: "Other Roads",
-              uniqueValueInfos: [
-                roadUVI("Freeway",                        cFreeway,    6.5),
-                roadUVI("Expressway/highway",             cExpressway, 5.0),
-                roadUVI("Arterial",                       cArterial,   3.5),
-                roadUVI("Collector",                      cCollector,  2.5),
-                roadUVI("NBDOT Local Numbered",           cLocalNum,   1.8),
-                roadUVI("NBDOT Local Named",              cLocalNum,   1.5),
-                roadUVI("DOT Local Named (Gravel)",       [255,255,255,255], 1.8, "solid"),
-                roadUVI("Local/street",                   [255,255,255,255], 1.8),
-                roadUVI("Local/unknown",                  [255,255,255,255], 1.5),
-                roadUVI("Local/strata",                   [255,255,255,255], 1.5),
-                roadUVI("Ramp",                           cRamp,       1.5),
-                roadUVI("Service Lane",                   [255,255,255,255], 1.2),
-                roadUVI("Alleyway/lane",                  [255,255,255,255], 1.0),
-                roadUVI("Weigh Station",                  [255,255,255,255], 1.0),
-                roadUVI("NBDOT Road Public Access",       [255,255,255,255], 1.5),
-                roadUVI("NBDNR Resource Road F1",         cResource,   1.0, "dash"),
-                roadUVI("NBDNR Resource Road F2",         cResource,   1.0, "dash"),
-                roadUVI("NBDNR Resource Road F3",         cResource,   0.8, "dash"),
-                roadUVI("NBDNR Resource Road F4",         cResource,   0.7, "dash"),
-                roadUVI("NBDNR Resource Road F5",         cResource,   0.7, "dash"),
-                roadUVI("NBDNR Resource Road F6",         cResource,   0.7, "dash"),
-                roadUVI("Non-vehicular Addressed Segment",[220,220,220,255], 0.7, "dash"),
-                roadUVI("NBDOT Road Under Construction",  [220,220,220,255], 0.8, "dash"),
-                roadUVI("Unknown",                        [255,255,255,255], 1.0)
-              ]
-            }
-          },
-          {
-            // ── Ferry routes (all scales) ──
-            id: 0,
-            title: "Ferry Routes",
-            renderer: {
-              type: "simple",
-              symbol: {
-                type: "simple-line",
-                color: rgba(100, 140, 180, 255),
-                width: 2.0,
-                style: "dash"
-              }
-            }
-          }
-        ]
-      });
-
-      // ── Road tier: arterials / collectors drawn over local roads ──
-      var roadsMidLayer = new MapImageLayer({
-        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_Basemap_NBRN/MapServer",
-        id: "roadsmid",
-        title: "Roads (Arterial/Collector)",
-        listMode: "hide",
-        imageFormat: "png24",
-        sublayers: [{
-          id: 1,
-          title: "Arterials & Collectors",
-          definitionExpression: "Func_Road_Class IN ('Arterial','Collector')",
-          renderer: {
-            type: "unique-value",
-            field: "Func_Road_Class",
-            defaultSymbol: { type: "simple-line", color: [255,170,0,255], width: 2.5 },
-            uniqueValueInfos: [
-              roadUVI("Arterial",  cArterial, 3.5),
-              roadUVI("Collector", cCollector, 2.5)
-            ]
-          }
-        }]
-      });
-
-      // ── Road tier: freeways always on top ──
-      var roadsTopLayer = new MapImageLayer({
-        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_Basemap_NBRN/MapServer",
-        id: "roadstop",
-        title: "Roads (Freeways)",
-        listMode: "hide",
-        imageFormat: "png24",
-        sublayers: [{
-          id: 1,
-          title: "Freeways & Expressways",
-          definitionExpression: "Func_Road_Class IN ('Freeway','Expressway/highway')",
-          renderer: {
-            type: "unique-value",
-            field: "Func_Road_Class",
-            defaultSymbol: { type: "simple-line", color: [230,76,0,255], width: 6.5 },
-            uniqueValueInfos: [
-              roadUVI("Freeway",            cFreeway,    6.5),
-              roadUVI("Expressway/highway", cExpressway, 5.0)
-            ]
-          }
-        }]
-      });
-
-      // ==================================================================
-      //  6b. ROAD CASING — wider gray lines under white local roads
-      // ==================================================================
-      var roadsCasingLayer = new MapImageLayer({
-        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_Basemap_NBRN/MapServer",
-        id: "roadscasing",
-        title: "Road Casing",
-        listMode: "hide-children",
-        imageFormat: "png24",
-        minScale: 36112,
-        sublayers: [{
-          id: 1,
-          title: "Local Road Casing",
-          definitionExpression: "Func_Road_Class IN ('Local/street','Local/unknown','Local/strata','DOT Local Named (Gravel)','NBDOT Road Public Access','Service Lane','Alleyway/lane','Weigh Station','Unknown')",
-          renderer: {
-            type: "simple",
-            symbol: {
-              type: "simple-line",
-              color: rgba(178, 178, 178, 255),
-              width: 3.5
-            }
-          }
-        }]
-      });
-
-      // ==================================================================
-      //  6c. RAILWAY — National Railway Network (NRWN)
-      //      Classic topo-style: solid dark line for tracks,
-      //      small markers & labels for stations.
-      //      Tracks appear at 1:72 K (matching local highway detail).
-      // ==================================================================
-      var railwayLayer = new MapImageLayer({
-        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_NRWN/MapServer",
-        id: "railway",
-        title: "Railway (NRWN)",
-        listMode: "hide-children",
-        imageFormat: "png32",
-        minScale: 72000,
-        sublayers: [
-          {
-            id: 0,  // Stations
-            title: "Railway Stations",
-            minScale: 36000,
-            renderer: {
-              type: "simple",
-              symbol: {
-                type: "simple-marker",
-                size: 5,
-                color: [50, 50, 50, 255],
-                style: "circle",
-                outline: {
-                  type: "simple-line",
-                  color: [30, 30, 30, 255],
-                  width: 0.6
-                }
-              }
-            },
-            labelingInfo: [{
-              labelExpression: "[STNENNAME]",
-              labelPlacement: "above-right",
-              symbol: {
-                type: "text",
-                color: [50, 50, 50, 255],
-                haloColor: [255, 255, 255, 220],
-                haloSize: 1.0,
-                font: { size: 7, family: "Arial", weight: "normal" }
-              },
-              minScale: 24000,
-              maxScale: 0
-            }]
-          },
-          {
-            id: 5,  // Tracks
-            title: "Railway Tracks",
-            minScale: 72000,
-            renderer: {
-              type: "simple",
-              symbol: {
-                type: "simple-line",
-                color: [50, 50, 50, 200],
-                width: 1.2,
-                style: "solid"
-              }
-            }
-          }
-        ]
-      });
-
-      // ==================================================================
-      //  7.  PLACE NAMES  (drawn on top of everything)
-      //      Uses GeoNB_NRCan_PlaceNames — point features with name labels
-      // ==================================================================
-      var placeNamesLayer = new MapImageLayer({
-        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_NRCan_PlaceNames/MapServer",
-        id: "placenames",
-        title: "Place Names",
-        opacity: 1,
-        imageFormat: "png32",
-        sublayers: [
-          { id: 3, title: "Terrain Features", visible: false },
-          { id: 2, title: "Constructed Features", visible: false },
-          { id: 1, title: "Administrative Areas", visible: false },
-          {
-            id: 0,
-            title: "Geographic Names",
-            renderer: {
-              type: "simple",
-              symbol: {
-                type: "simple-marker",
-                size: 0,
-                color: [0, 0, 0, 0],
-                outline: null
-              }
-            }
-          }
-        ]
-      });
-
-      // ==================================================================
-      //  8.  PARCELS  (thin warm brown outline, like WA DOR Basic Parcels)
-      // ==================================================================
-      var parcelsLayer = new MapImageLayer({
-        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Parcels/MapServer",
-        id: "parcels",
-        title: "Parcels",
-        listMode: "hide-children",
-        minScale: 12500,
-        imageFormat: "png32",
-        sublayers: [{
-          id: 0,
-          title: "Parcels",
-          renderer: {
-            type: "simple",
-            symbol: {
-              type: "simple-fill",
-              color: rgba(0, 0, 0, 0),
-              outline: {
-                type: "simple-line",
-                color: rgba(178, 178, 178, 255),   // WA DOR parcel gray
-                width: 0.5
-              }
-            }
-          }
-        }]
-      });
-
-      // ==================================================================
-      //  9.  BUILDINGS  (LiDAR footprints — transparent brown)
-      //      Appears at 1:9,028 — tighter than parcels (1:12,500)
-      // ==================================================================
-      var buildingsLayer = new MapImageLayer({
-        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Buildings/MapServer",
-        id: "buildings",
-        title: "Buildings",
-        listMode: "hide-children",
-        minScale: 4500,
-        imageFormat: "png24",
-        sublayers: [{
-          id: 0,
-          title: "Building Footprints",
-          renderer: {
-            type: "simple",
-            symbol: {
-              type: "simple-fill",
-              color: [160, 110, 70, 100],
-              outline: {
-                type: "simple-line",
-                color: [130, 85, 50, 160],
-                width: 0.4
-              }
-            }
-          }
-        }]
-      });
-
-      // ==================================================================
-      //  10. PUBLIC SCHOOLS  (EECD — Anglophone & Francophone)
-      //      Small square markers; labels at very close zoom.
-      //      Appears at 1:36 K — a step closer than railway.
-      // ==================================================================
-      var schoolsLayer = new MapImageLayer({
-        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_EECD_PublicSchools/MapServer",
-        id: "schools",
-        title: "Public Schools",
-        visible: false,
-        listMode: "hide-children",
-        imageFormat: "png32",
-        minScale: 36000,
-        sublayers: [
-          {
-            id: 1,  // Francophone
-            title: "Francophone Schools",
-            minScale: 36000,
-            renderer: {
-              type: "simple",
-              symbol: {
-                type: "simple-marker",
-                size: 7,
-                color: [70, 130, 180, 255],
-                style: "square",
-                outline: {
-                  type: "simple-line",
-                  color: [40, 80, 130, 255],
-                  width: 0.6
-                }
-              }
-            },
-            labelingInfo: [{
-              labelExpression: "[strNM]",
-              labelPlacement: "above-right",
-              symbol: {
-                type: "text",
-                color: [40, 80, 130, 255],
-                haloColor: [255, 255, 255, 220],
-                haloSize: 1.0,
-                font: { size: 7, family: "Arial", weight: "normal" }
-              },
-              minScale: 18000,
-              maxScale: 0
-            }]
-          },
-          {
-            id: 0,  // Anglophone
-            title: "Anglophone Schools",
-            minScale: 36000,
-            renderer: {
-              type: "simple",
-              symbol: {
-                type: "simple-marker",
-                size: 7,
-                color: [70, 130, 180, 255],
-                style: "square",
-                outline: {
-                  type: "simple-line",
-                  color: [40, 80, 130, 255],
-                  width: 0.6
-                }
-              }
-            },
-            labelingInfo: [{
-              labelExpression: "[strNM]",
-              labelPlacement: "above-right",
-              symbol: {
-                type: "text",
-                color: [40, 80, 130, 255],
-                haloColor: [255, 255, 255, 220],
-                haloSize: 1.0,
-                font: { size: 7, family: "Arial", weight: "normal" }
-              },
-              minScale: 18000,
-              maxScale: 0
-            }]
-          }
-        ]
-      });
-
-      // ==================================================================
-      //  ASSEMBLE MAP — Progressive layer loading
-      //  Only essential layers load on startup; the rest are added
-      //  when the user zooms to the relevant scale.  This keeps
-      //  connection count and GPU memory within mobile limits.
-      //
-      //  Phase 1: 6 layers (≤4 geonb requests)  — immediate
-      //  Phase 2: 3 overview layers              — 500 ms after load
-      //  Phase 3: detail groups                  — on first zoom-in
-      // ==================================================================
-
-      // Master z-order (bottom → top) used for correct insertion
-      var layerOrder = [
-        "hillshade", "landcover", "hydro", "crownland",
-        "wildlife", "nationalparks", "parks",
-        "localparks-fredericton", "localparks-moncton", "localparks-saintjohn",
-        "cities", "counties", "contours", "railway",
-        "roadscasing", "roads", "roadsmid", "roadstop", "parcels", "buildings", "schools", "placenames"
-      ];
-
-      function addInOrder(layer) {
-        var targetIdx = layerOrder.indexOf(layer.id);
-        var insertAt = 0;
-        map.layers.forEach(function (l, i) {
-          var idx = layerOrder.indexOf(l.id);
-          if (idx >= 0 && idx < targetIdx) insertAt = i + 1;
-        });
-        map.add(layer, insertAt);
-      }
-
-      // Phase 1 — essential base layers only
-      var map = new Map({
-        layers: [
-          hillshadeLayer,        // ImageryLayer  (different domain)
-          landCoverLayer,        // GroupLayer     (NRCan + clip mask)
-          hydroLayer,            // 1 geonb req   (single NBHN export)
-          countiesLayer,         // 1 geonb req
-          roadsLayer,            // local + overview roads
-          roadsMidLayer,         // arterials/collectors (over local)
-          roadsTopLayer,         // freeways (topmost)
-          placeNamesLayer        // 1 geonb req
-        ]
-      });
-
-      // ==================================================================
-      //  MAP VIEW  — centred on New Brunswick
-      // ==================================================================
-      var view = new MapView({
-        container: "viewDiv",
-        map: map,
-        center: [-66.5, 46.5],
-        zoom: 8,
-        constraints: {
-          minZoom: 2,
-          maxZoom: 19
-        },
-        ui: {
-          components: ["zoom", "compass", "attribution"]
-        },
-        background: { color: [240, 240, 240, 1] }
-      });
-
-      // ── Deferred layer groups (added once when scale threshold met) ──
-      var deferred = [
-        { s: 500000, layers: [parksLayer, crownLandLayer] },
-        { s: 150000, layers: [contoursLayer] },
-        { s: 72000,  layers: [railwayLayer, frederictonParksLayer, monctonParksLayer, saintJohnParksLayer] },
-        { s: 36000,  layers: [roadsCasingLayer, schoolsLayer] },
-        { s: 12500,  layers: [parcelsLayer] },
-        { s: 4500,   layers: [buildingsLayer] }
-      ];
-
-      function checkDeferred(scale) {
-        deferred.forEach(function (g) {
-          if (!g.added && scale <= g.s) {
-            g.added = true;
-            g.layers.forEach(addInOrder);
-          }
-        });
-      }
-
-      view.when(function () {
-        // Phase 2 — overview layers (not critical for first paint)
-        setTimeout(function () {
-          addInOrder(nationalParksLayer);
-          addInOrder(wildlifeRefugesLayer);
-          addInOrder(citiesLayer);
-        }, 500);
-
-        // In case initial zoom already crosses a deferred threshold
-        checkDeferred(view.scale);
-      });
-
-      // Fire deferred checks when the view settles (not mid-pinch)
-      view.watch("stationary", function (isStationary) {
-        if (isStationary) checkDeferred(view.scale);
-      });
-
-      // ── Scale Bar ──
-      var scaleBar = new ScaleBar({
-        view: view,
-        unit: "dual",
-        style: "ruler"
-      });
-      view.ui.add(scaleBar, "bottom-left");
-
-      // ── Layer Toggle ──
-      var layerList = new LayerList({ view: view });
-      var layerExpand = new Expand({
-        view: view,
-        content: layerList,
-        expandIconClass: "esri-icon-layers",
-        expandTooltip: "Toggle Layers"
-      });
-      view.ui.add(layerExpand, "top-right");
-
-      // ── Sync road tier visibility with main Road Network toggle ──
-      roadsLayer.watch("visible", function (v) {
-        roadsMidLayer.visible = v;
-        roadsTopLayer.visible = v;
-      });
-
-      // ── Popups ──
-      view.popup.dockEnabled = true;
-      view.popup.dockOptions = {
-        buttonEnabled: true,
-        breakpoint: { width: 600 }
+    // ── REST API symbol helpers ──
+    function sfs(color, outline, style) {
+      return { type: 'esriSFS', style: style || 'esriSFSSolid', color: color, outline: outline || null };
+    }
+    function sls(color, width, style) {
+      return { type: 'esriSLS', style: style || 'esriSLSSolid', color: color, width: width };
+    }
+    function sms(color, size, style, outline) {
+      var s = { type: 'esriSMS', style: style || 'esriSMSCircle', color: color, size: size };
+      if (outline) s.outline = outline;
+      return s;
+    }
+    function ts(color, font, haloColor, haloSize) {
+      return {
+        type: 'esriTS', color: color, haloColor: haloColor, haloSize: haloSize || 0,
+        font: { family: font.family || 'Arial', size: font.size || 10, weight: font.weight || 'Normal', style: font.style || 'Normal' }
       };
+    }
+    function dl(id, renderer, opts) {
+      var d = { id: id, source: { type: 'mapLayer', mapLayerId: id }, drawingInfo: { renderer: renderer } };
+      if (opts) {
+        if (opts.def) d.definitionExpression = opts.def;
+        if (opts.labels) d.drawingInfo.labelingInfo = opts.labels;
+      }
+      return d;
+    }
+    function uvi(val, sym) { return { value: val, label: val, symbol: sym }; }
 
+    // ── Road color palette ──
+    var cFwy = [230,76,0,255], cArt = [255,170,0,255], cCol = [255,170,0,255],
+        cNum = [255,231,115,255], cWht = [255,255,255,255], cRes = [115,76,0,255],
+        cGry = [200,200,200,255], cRamp = [220,200,160,255], cDim = [220,220,220,255];
+
+    // ==================================================================
+    //  1. HILLSHADE
+    // ==================================================================
+    var hillshade = L.esri.imageMapLayer({
+      url: 'https://gis-erd-der.gnb.ca/server/rest/services/LidarProducts/Hillshade_45/ImageServer',
+      opacity: 0.2, pane: 'hillshadeP', format: 'jpgpng'
+    }).addTo(map);
+
+    // ==================================================================
+    //  1b. LAND COVER (unclipped for prototype — NB clip mask skipped)
+    // ==================================================================
+    var landCover = L.esri.dynamicMapLayer({
+      url: 'https://geoappext.nrcan.gc.ca/arcgis/rest/services/FGP/LandCover_EN/MapServer',
+      opacity: 0.15, layers: [0], pane: 'landcoverP', format: 'png32'
+    }).addTo(map);
+
+    // ==================================================================
+    //  2. HYDROGRAPHY
+    // ==================================================================
+    var hydro = L.esri.dynamicMapLayer({
+      url: 'https://geonb.snb.ca/arcgis/rest/services/GeoNB_DNR_NBHN/MapServer',
+      pane: 'hydroP', format: 'png32',
+      dynamicLayers: [
+        dl(11, { type: 'simple', symbol: sfs([130,175,210,160], sls([130,175,210,120], 0.4), 'esriSFSForwardDiagonal') }),
+        dl(13, { type: 'simple', symbol: sfs([158,187,215,255]) }),
+        dl(10, { type: 'simple', symbol: sls([158,187,215,255], 1.4) }),
+        dl(16, { type: 'simple', symbol: sfs([158,187,215,255]) })
+      ]
+    }).addTo(map);
+
+    // ==================================================================
+    //  3c. CROWN LAND
+    // ==================================================================
+    var crownLand = L.esri.dynamicMapLayer({
+      url: 'https://geonb.snb.ca/arcgis/rest/services/GeoNB_DNR_Crown_Land/MapServer',
+      opacity: 0.3, pane: 'crownlandP', format: 'png32', minZoom: 10,
+      dynamicLayers: [ dl(3, { type: 'simple', symbol: sfs([180,215,158,255]) }) ]
+    }).addTo(map);
+
+    // ==================================================================
+    //  3c. WILDLIFE REFUGES
+    // ==================================================================
+    var wildlife = L.esri.dynamicMapLayer({
+      url: 'https://gis-erd-der.gnb.ca/server/rest/services/OpenData/WildlifeRefuge/MapServer',
+      opacity: 0.6, pane: 'wildlifeP', format: 'png32',
+      dynamicLayers: [ dl(0, { type: 'simple', symbol: sfs([76,115,0,255], sls([56,90,0,200], 1.2)) }) ]
+    }).addTo(map);
+
+    // ==================================================================
+    //  3a. NATIONAL PARKS (FeatureLayer — no labels in prototype)
+    // ==================================================================
+    var nationalParks = L.esri.featureLayer({
+      url: 'https://proxyinternet.nrcan-rncan.gc.ca/arcgis/rest/services/CLSS-SATC/CLSS_Administrative_Boundaries/MapServer/1',
+      where: "jurisdiction = 'NB'", pane: 'natparksP',
+      style: function () { return { fillColor: '#385a00', color: '#284600', weight: 1.4, fillOpacity: 0.6, opacity: 0.78 }; }
+    }).addTo(map);
+
+    // ==================================================================
+    //  3. PROVINCIAL PARKS
+    // ==================================================================
+    var parks = L.esri.dynamicMapLayer({
+      url: 'https://geonb.snb.ca/arcgis/rest/services/GeoNB_DNR_ProvincialParks/MapServer',
+      opacity: 0.6, pane: 'parksP', format: 'png32', minZoom: 10,
+      dynamicLayers: [ dl(0, { type: 'simple', symbol: sfs([76,115,0,255], sls([56,90,0,200], 1.4)) }) ]
+    }).addTo(map);
+
+    // ==================================================================
+    //  3d. LOCAL PARKS (FeatureLayers)
+    // ==================================================================
+    var lpStyle = function () { return { fillColor: '#90c75e', color: '#64a03c', weight: 0.6, fillOpacity: 0.55, opacity: 0.78 }; };
+    var fredParks = L.esri.featureLayer({
+      url: 'https://services2.arcgis.com/iLWAxhpxafhOza2U/arcgis/rest/services/Park_Open_Space/FeatureServer/0',
+      pane: 'localparksP', minZoom: 13, style: lpStyle
+    }).addTo(map);
+    var moncParks = L.esri.featureLayer({
+      url: 'https://services1.arcgis.com/E26PuSoie2Y7bbyI/arcgis/rest/services/Parks/FeatureServer/0',
+      pane: 'localparksP', minZoom: 13, style: lpStyle
+    }).addTo(map);
+    var sjParks = L.esri.featureLayer({
+      url: 'https://services.arcgis.com/DLk7hgTJeJILuEBg/ArcGIS/rest/services/Parks3/FeatureServer/0',
+      pane: 'localparksP', minZoom: 13, style: lpStyle
+    }).addTo(map);
+
+    // ==================================================================
+    //  5. CITIES
+    // ==================================================================
+    var cities = L.esri.dynamicMapLayer({
+      url: 'https://geonb.snb.ca/arcgis/rest/services/GeoNB_DPS_NB911_Communities/MapServer',
+      opacity: 0.45, pane: 'citiesP', format: 'png32',
+      dynamicLayers: [
+        dl(0, { type: 'simple', symbol: sfs([252,210,218,140], sls([200,160,170,180], 1)) },
+          { def: "COMMUNITY_NAME IN ('Saint John','Fredericton','Moncton')" })
+      ]
+    }).addTo(map);
+
+    // ==================================================================
+    //  4. COUNTIES & PARISHES
+    // ==================================================================
+    var counties = L.esri.dynamicMapLayer({
+      url: 'https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Counties/MapServer',
+      pane: 'countiesP', format: 'png32',
+      dynamicLayers: [
+        dl(0, { type: 'simple', symbol: sfs([0,0,0,0], sls([100,65,45,190], 1.2)) }, {
+          labels: [
+            { labelExpression: '[ENG_NAME]', labelPlacement: 'esriServerPolygonPlacementAlwaysHorizontal',
+              symbol: ts([85,55,35,255], { family:'Georgia', size:7, weight:'Bold' }, [255,255,255,210], 1),
+              minScale: 3000000, maxScale: 200000 },
+            { labelExpression: '[ENG_NAME]', labelPlacement: 'esriServerPolygonPlacementAlwaysHorizontal',
+              symbol: ts([100,70,50,180], { family:'Georgia', size:5 }, [255,255,255,180], 0.7),
+              minScale: 200000, maxScale: 0 }
+          ]
+        }),
+        dl(1, { type: 'simple', symbol: sfs([0,0,0,0], sls([130,100,80,120], 0.6, 'esriSLSDash')) }, {
+          labels: [
+            { labelExpression: '[ENG_NAME]', labelPlacement: 'esriServerPolygonPlacementAlwaysHorizontal',
+              symbol: ts([120,90,70,160], { family:'Georgia', size:5 }, [255,255,255,160], 0.7),
+              minScale: 150000, maxScale: 0 }
+          ]
+        })
+      ]
+    }).addTo(map);
+
+    // ==================================================================
+    //  5b. CONTOURS
+    // ==================================================================
+    var contours = L.esri.dynamicMapLayer({
+      url: 'https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Contours/MapServer',
+      opacity: 0.55, pane: 'contoursP', format: 'png32', minZoom: 12,
+      dynamicLayers: [
+        dl(1, { type: 'simple', symbol: sls([168,120,60,200], 0.4) }, {
+          labels: [
+            { labelExpression: '[Contour]', labelPlacement: 'esriServerLinePlacementCenterAlong',
+              symbol: ts([140,95,50,230], { family:'Tahoma', size:5 }, [255,255,240,180], 0.8),
+              minScale: 9000, maxScale: 0 }
+          ]
+        }),
+        dl(0, { type: 'simple', symbol: sls([140,90,45,255], 0.9) })
+      ]
+    }).addTo(map);
+
+    // ==================================================================
+    //  6c. RAILWAY
+    // ==================================================================
+    var railway = L.esri.dynamicMapLayer({
+      url: 'https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_NRWN/MapServer',
+      pane: 'railwayP', format: 'png32', minZoom: 13,
+      dynamicLayers: [
+        dl(0, { type: 'simple', symbol: sms([50,50,50,255], 5, 'esriSMSCircle', sls([30,30,30,255], 0.6)) }, {
+          labels: [
+            { labelExpression: '[STNENNAME]', labelPlacement: 'esriServerPointLabelPlacementAboveRight',
+              symbol: ts([50,50,50,255], { family:'Arial', size:7 }, [255,255,255,220], 1),
+              minScale: 24000, maxScale: 0 }
+          ]
+        }),
+        dl(5, { type: 'simple', symbol: sls([50,50,50,200], 1.2) })
+      ]
+    }).addTo(map);
+
+    // ==================================================================
+    //  6b. ROAD CASING
+    // ==================================================================
+    var casingDef = "Func_Road_Class IN ('Local/street','Local/unknown','Local/strata','DOT Local Named (Gravel)','NBDOT Road Public Access','Service Lane','Alleyway/lane','Weigh Station','Unknown')";
+    var roadCasing = L.esri.dynamicMapLayer({
+      url: 'https://geonb.snb.ca/arcgis/rest/services/GeoNB_Basemap_NBRN/MapServer',
+      pane: 'casingP', format: 'png24', minZoom: 14,
+      dynamicLayers: [ dl(1, { type: 'simple', symbol: sls([178,178,178,255], 3.5) }, { def: casingDef }) ]
+    }).addTo(map);
+
+    // ==================================================================
+    //  6. ROADS (local/minor + overview scales)
+    // ==================================================================
+    var localFilter = "Func_Road_Class NOT IN ('Freeway','Expressway/highway','Arterial','Collector')";
+    function ri(v, c, w, s) { return uvi(v, sls(c, w, s || 'esriSLSSolid')); }
+
+    var roads = L.esri.dynamicMapLayer({
+      url: 'https://geonb.snb.ca/arcgis/rest/services/GeoNB_Basemap_NBRN/MapServer',
+      pane: 'roadsP', format: 'png24',
+      dynamicLayers: [
+        // Small scale (overview)
+        dl(3, { type: 'uniqueValue', field1: 'Func_Road_Class',
+          defaultSymbol: sls(cGry, 0.5),
+          uniqueValueInfos: [ ri('Freeway',cFwy,3), ri('Expressway/highway',cFwy,2.4),
+            ri('Arterial',cArt,1.4), ri('Collector',cCol,0.9) ]
+        }, { def: "Func_Road_Class IN ('Freeway','Expressway/highway','Arterial','Collector')" }),
+        // Medium scale
+        dl(2, { type: 'uniqueValue', field1: 'Func_Road_Class',
+          defaultSymbol: sls(cGry, 0.6),
+          uniqueValueInfos: [ ri('Freeway',cFwy,4.5), ri('Expressway/highway',cFwy,3.5),
+            ri('Arterial',cArt,2.2), ri('Collector',cCol,1.4), ri('NBDOT Local Numbered',cNum,0.8) ]
+        }, { def: "Func_Road_Class IN ('Freeway','Expressway/highway','Arterial','Collector','NBDOT Local Numbered')" }),
+        // Large scale — local/minor only
+        dl(1, { type: 'uniqueValue', field1: 'Func_Road_Class',
+          defaultSymbol: sls(cWht, 1.5),
+          uniqueValueInfos: [
+            ri('NBDOT Local Numbered',cNum,1.8), ri('NBDOT Local Named',cNum,1.5),
+            ri('DOT Local Named (Gravel)',cWht,1.8), ri('Local/street',cWht,1.8),
+            ri('Local/unknown',cWht,1.5), ri('Local/strata',cWht,1.5), ri('Ramp',cRamp,1.5),
+            ri('Service Lane',cWht,1.2), ri('Alleyway/lane',cWht,1), ri('Weigh Station',cWht,1),
+            ri('NBDOT Road Public Access',cWht,1.5),
+            ri('NBDNR Resource Road F1',cRes,1,'esriSLSDash'), ri('NBDNR Resource Road F2',cRes,1,'esriSLSDash'),
+            ri('NBDNR Resource Road F3',cRes,0.8,'esriSLSDash'), ri('NBDNR Resource Road F4',cRes,0.7,'esriSLSDash'),
+            ri('NBDNR Resource Road F5',cRes,0.7,'esriSLSDash'), ri('NBDNR Resource Road F6',cRes,0.7,'esriSLSDash'),
+            ri('Non-vehicular Addressed Segment',cDim,0.7,'esriSLSDash'),
+            ri('NBDOT Road Under Construction',cDim,0.8,'esriSLSDash'), ri('Unknown',cWht,1) ]
+        }, { def: localFilter }),
+        // Ferry
+        dl(0, { type: 'simple', symbol: sls([100,140,180,255], 2, 'esriSLSDash') })
+      ]
+    }).addTo(map);
+
+    // ── Road tier: Arterials/Collectors over local ──
+    var roadsMid = L.esri.dynamicMapLayer({
+      url: 'https://geonb.snb.ca/arcgis/rest/services/GeoNB_Basemap_NBRN/MapServer',
+      pane: 'roadsMidP', format: 'png24', minZoom: 13,
+      dynamicLayers: [
+        dl(1, { type: 'uniqueValue', field1: 'Func_Road_Class',
+          defaultSymbol: sls(cArt, 2.5),
+          uniqueValueInfos: [ ri('Arterial',cArt,3.5), ri('Collector',cCol,2.5) ]
+        }, { def: "Func_Road_Class IN ('Arterial','Collector')" })
+      ]
+    }).addTo(map);
+
+    // ── Road tier: Freeways on top ──
+    var roadsTop = L.esri.dynamicMapLayer({
+      url: 'https://geonb.snb.ca/arcgis/rest/services/GeoNB_Basemap_NBRN/MapServer',
+      pane: 'roadsTopP', format: 'png24', minZoom: 13,
+      dynamicLayers: [
+        dl(1, { type: 'uniqueValue', field1: 'Func_Road_Class',
+          defaultSymbol: sls(cFwy, 6.5),
+          uniqueValueInfos: [ ri('Freeway',cFwy,6.5), ri('Expressway/highway',cFwy,5) ]
+        }, { def: "Func_Road_Class IN ('Freeway','Expressway/highway')" })
+      ]
+    }).addTo(map);
+
+    // ==================================================================
+    //  8. PARCELS
+    // ==================================================================
+    var parcels = L.esri.dynamicMapLayer({
+      url: 'https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Parcels/MapServer',
+      pane: 'parcelsP', format: 'png32', minZoom: 15,
+      dynamicLayers: [ dl(0, { type: 'simple', symbol: sfs([0,0,0,0], sls([178,178,178,255], 0.5)) }) ]
+    }).addTo(map);
+
+    // ==================================================================
+    //  9. BUILDINGS
+    // ==================================================================
+    var buildings = L.esri.dynamicMapLayer({
+      url: 'https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Buildings/MapServer',
+      pane: 'buildingsP', format: 'png24', minZoom: 17,
+      dynamicLayers: [ dl(0, { type: 'simple', symbol: sfs([160,110,70,100], sls([130,85,50,160], 0.4)) }) ]
+    }).addTo(map);
+
+    // ==================================================================
+    //  7. PLACE NAMES (service defaults for labels)
+    // ==================================================================
+    var placeNames = L.esri.dynamicMapLayer({
+      url: 'https://geonb.snb.ca/arcgis/rest/services/GeoNB_NRCan_PlaceNames/MapServer',
+      pane: 'placenamesP', format: 'png32', layers: [0]
+    }).addTo(map);
+
+    // ==================================================================
+    //  WIDGETS
+    // ==================================================================
+    L.control.scale({ imperial: true, metric: true }).addTo(map);
+
+    var overlays = {
+      'Hillshade': hillshade,
+      'Land Cover': landCover,
+      'Hydrography': hydro,
+      'Crown Land': crownLand,
+      'Wildlife Refuges': wildlife,
+      'National Parks': nationalParks,
+      'Provincial Parks': parks,
+      'Fredericton Parks': fredParks,
+      'Moncton Parks': moncParks,
+      'Saint John Parks': sjParks,
+      'Cities': cities,
+      'Counties & Parishes': counties,
+      'Contours': contours,
+      'Railway': railway,
+      'Road Casing': roadCasing,
+      'Roads': roads,
+      'Parcels': parcels,
+      'Buildings': buildings,
+      'Place Names': placeNames
+    };
+    L.control.layers(null, overlays, { collapsed: true }).addTo(map);
+
+    // ── Sync road tier visibility with main Roads toggle ──
+    map.on('overlayadd overlayremove', function (e) {
+      if (e.layer === roads) {
+        if (e.type === 'overlayadd') { map.addLayer(roadsMid); map.addLayer(roadsTop); }
+        else { map.removeLayer(roadsMid); map.removeLayer(roadsTop); }
+      }
     });
   </script>
 </body>
