@@ -63,6 +63,7 @@
     Buildings &mdash; GeoNB / SNB<br>
     Schools &mdash; GeoNB / EECD<br>
     Place Names &mdash; GeoNB / NRCan<br>
+    Hiking Trails &mdash; <a href="https://waymarkedtrails.org">Waymarked Trails</a> / OSM<br>
     <br>Map &mdash; <a href="https://leafletjs.com">Leaflet</a> + <a href="https://esri.github.io/esri-leaflet/">Esri Leaflet</a>
   </div>
 
@@ -88,7 +89,7 @@
       ['parksP', 218], ['localparksP', 219],
       ['countiesP', 230], ['contoursP', 235], ['railwayP', 238],
       ['casingP', 240], ['roadsP', 245], ['roadsMidP', 246],
-      ['roadsTopP', 247], ['parcelsP', 250], ['buildingsP', 255],
+      ['roadsTopP', 247], ['parcelsP', 250], ['trailsP', 252], ['buildingsP', 255],
       ['placenamesP', 260]
     ];
     panes.forEach(function (p) {
@@ -508,6 +509,15 @@
     }).addTo(map);
 
     // ==================================================================
+    //  7b. HIKING TRAILS (Waymarked Trails)
+    // ==================================================================
+    var hikingTrails = L.tileLayer('https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png', {
+      pane: 'trailsP', opacity: 0.7, maxZoom: 18, minZoom: 14,
+      bounds: L.latLngBounds([44.5, -69.2], [48.1, -63.7]),
+      attribution: '&copy; <a href="https://waymarkedtrails.org">Waymarked Trails</a>'
+    }).addTo(map);
+
+    // ==================================================================
     //  WIDGETS
     // ==================================================================
     L.control.scale({ imperial: true, metric: true }).addTo(map);
@@ -558,6 +568,7 @@
       'Roads': roads,
       'Parcels': parcels,
       'Buildings': buildings,
+      'Hiking Trails': hikingTrails,
       'Place Names': placeNames
     };
     L.control.layers(null, overlays, { collapsed: true }).addTo(map);
