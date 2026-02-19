@@ -141,7 +141,6 @@
           {
             id: 13,  // Water Bodies – polygons
             title: "Water Bodies",
-            labelsVisible: false,
             renderer: {
               type: "simple",
               symbol: {
@@ -154,7 +153,6 @@
           {
             id: 10,  // Water Courses – lines
             title: "Water Courses",
-            labelsVisible: false,
             minScale: 500000,
             renderer: {
               type: "simple",
@@ -168,7 +166,6 @@
           {
             id: 16,  // Coastal Features
             title: "Coastal Features",
-            labelsVisible: false,
             renderer: {
               type: "simple",
               symbol: {
@@ -257,6 +254,7 @@
         id: "parks",
         title: "Provincial Parks",
         opacity: 0.6,
+        minScale: 500000,
         imageFormat: "png32",
         sublayers: [{
           id: 0,
@@ -314,6 +312,7 @@
         id: "crownland",
         title: "Crown Land",
         opacity: 0.30,
+        minScale: 500000,
         imageFormat: "png32",
         sublayers: [{
           id: 3,
@@ -440,12 +439,10 @@
         id: "counties",
         title: "Counties & Parishes",
         imageFormat: "png32",
-        imageFormat: "png32",
         sublayers: [
           {
             id: 0,  // Counties
             title: "Counties",
-            labelsVisible: false,
             minScale: 3000000,
             maxScale: 0,          // draw all the way to max zoom
             renderer: {
@@ -494,7 +491,6 @@
           {
             id: 1,  // Parishes
             title: "Parishes",
-            labelsVisible: false,
             minScale: 500000,
             maxScale: 0,          // draw all the way to max zoom
             renderer: {
@@ -801,7 +797,6 @@
           {
             id: 0,  // Stations
             title: "Railway Stations",
-            labelsVisible: false,
             minScale: 36000,
             renderer: {
               type: "simple",
@@ -1012,147 +1007,6 @@
       });
 
       // ==================================================================
-      //  LABEL REFERENCE LAYERS
-      //  Labels are rendered as part of each MapImageLayer's server image,
-      //  so they draw at the layer's stack position.  To elevate labels
-      //  above roads / buildings, we create lightweight reference layers
-      //  with invisible geometry but active labeling, and stack them high.
-      //  The original geometry layers have labelsVisible: false.
-      // ==================================================================
-
-      // Hydro labels — water body & stream names (server defaults)
-      var hydroLabelsLayer = new MapImageLayer({
-        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_DNR_NBHN/MapServer",
-        id: "hydro-labels",
-        title: "Hydro Labels",
-        listMode: "hide",
-        imageFormat: "png32",
-        sublayers: [
-          {
-            id: 13,
-            renderer: {
-              type: "simple",
-              symbol: { type: "simple-fill", color: [0,0,0,0], outline: null }
-            }
-          },
-          {
-            id: 10,
-            minScale: 500000,
-            renderer: {
-              type: "simple",
-              symbol: { type: "simple-line", color: [0,0,0,0], width: 0.001 }
-            }
-          }
-        ]
-      });
-
-      // County & Parish labels — administrative names
-      var countiesLabelsLayer = new MapImageLayer({
-        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Counties/MapServer",
-        id: "counties-labels",
-        title: "County Labels",
-        listMode: "hide",
-        imageFormat: "png32",
-        sublayers: [
-          {
-            id: 0,
-            minScale: 3000000,
-            maxScale: 0,
-            renderer: {
-              type: "simple",
-              symbol: { type: "simple-fill", color: [0,0,0,0], outline: null }
-            },
-            labelingInfo: [
-              {
-                labelExpression: "[ENG_NAME]",
-                labelPlacement: "always-horizontal",
-                symbol: {
-                  type: "text",
-                  color: [85, 55, 35, 255],
-                  haloColor: [255, 255, 255, 210],
-                  haloSize: 1.0,
-                  font: { size: 7, weight: "bold", family: "Georgia" }
-                },
-                minScale: 3000000,
-                maxScale: 200000
-              },
-              {
-                labelExpression: "[ENG_NAME]",
-                labelPlacement: "always-horizontal",
-                symbol: {
-                  type: "text",
-                  color: [100, 70, 50, 180],
-                  haloColor: [255, 255, 255, 180],
-                  haloSize: 0.7,
-                  font: { size: 5, weight: "normal", family: "Georgia" }
-                },
-                minScale: 200000,
-                maxScale: 0
-              }
-            ]
-          },
-          {
-            id: 1,
-            minScale: 500000,
-            maxScale: 0,
-            renderer: {
-              type: "simple",
-              symbol: { type: "simple-fill", color: [0,0,0,0], outline: null }
-            },
-            labelingInfo: [{
-              labelExpression: "[ENG_NAME]",
-              labelPlacement: "always-horizontal",
-              symbol: {
-                type: "text",
-                color: [120, 90, 70, 160],
-                haloColor: [255, 255, 255, 160],
-                haloSize: 0.7,
-                font: { size: 5, weight: "normal", family: "Georgia" }
-              },
-              minScale: 150000,
-              maxScale: 0
-            }]
-          }
-        ]
-      });
-
-      // Railway station labels
-      var railwayLabelsLayer = new MapImageLayer({
-        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_NRWN/MapServer",
-        id: "railway-labels",
-        title: "Railway Labels",
-        listMode: "hide",
-        imageFormat: "png32",
-        minScale: 36000,
-        sublayers: [{
-          id: 0,
-          minScale: 36000,
-          renderer: {
-            type: "simple",
-            symbol: {
-              type: "simple-marker",
-              size: 0,
-              color: [0,0,0,0],
-              outline: null
-            }
-          },
-          labelingInfo: [{
-            labelExpression: "[STNENNAME]",
-            labelPlacement: "above-right",
-            symbol: {
-              type: "text",
-              color: [50, 50, 50, 255],
-              haloColor: [255, 255, 255, 220],
-              haloSize: 1.0,
-              font: { size: 7, family: "Arial", weight: "normal" }
-            },
-            minScale: 24000,
-            maxScale: 0
-          }]
-        }]
-      });
-
-      // ==================================================================
       //  ASSEMBLE MAP
       // ==================================================================
       var map = new Map({
@@ -1176,10 +1030,6 @@
           roadsLayer,
           parcelsLayer,
           buildingsLayer,
-          // ── Label reference layers (above all geometry) ──
-          hydroLabelsLayer,      // water body & stream names
-          countiesLabelsLayer,   // county & parish names
-          railwayLabelsLayer,    // station names
           schoolsLayer,          // school markers + labels
           placeNamesLayer        // topmost → place names over all
         ]
