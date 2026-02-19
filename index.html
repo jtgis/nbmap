@@ -172,7 +172,7 @@
     // ==================================================================
     var hydro = L.esri.dynamicMapLayer({
       url: 'https://geonb.snb.ca/arcgis/rest/services/GeoNB_DNR_NBHN/MapServer',
-      pane: 'hydroP', format: 'png32',
+      pane: 'hydroP', format: 'png24',
       dynamicLayers: [
         dl(11, { type: 'simple', symbol: sfs([130,175,210,160], sls([130,175,210,120], 0.4), 'esriSFSForwardDiagonal') }),
         dl(13, { type: 'simple', symbol: sfs([158,187,215,255]) }),
@@ -195,7 +195,7 @@
     // ==================================================================
     var wildlife = L.esri.dynamicMapLayer({
       url: 'https://gis-erd-der.gnb.ca/server/rest/services/OpenData/WildlifeRefuge/MapServer',
-      opacity: 0.6, pane: 'wildlifeP', format: 'png32',
+      opacity: 0.6, pane: 'wildlifeP', format: 'png24', minZoom: 10,
       dynamicLayers: [ dl(0, { type: 'simple', symbol: sfs([76,115,0,255], sls([56,90,0,200], 1.2)) }) ]
     }).addTo(map);
 
@@ -204,7 +204,7 @@
     // ==================================================================
     var nationalParks = L.esri.featureLayer({
       url: 'https://proxyinternet.nrcan-rncan.gc.ca/arcgis/rest/services/CLSS-SATC/CLSS_Administrative_Boundaries/MapServer/1',
-      where: "jurisdiction = 'NB'", pane: 'natparksP',
+      where: "jurisdiction = 'NB'", pane: 'natparksP', minZoom: 10,
       style: function (feature) {
         if (feature.geometry.type === 'Point' || feature.geometry.type === 'MultiPoint') {
           return { opacity: 0, fillOpacity: 0, weight: 0, radius: 0 };
@@ -244,7 +244,7 @@
     // ==================================================================
     var cities = L.esri.dynamicMapLayer({
       url: 'https://geonb.snb.ca/arcgis/rest/services/GeoNB_DPS_NB911_Communities/MapServer',
-      opacity: 0.45, pane: 'citiesP', format: 'png32',
+      opacity: 0.45, pane: 'citiesP', format: 'png24', minZoom: 10,
       dynamicLayers: [
         dl(0, { type: 'simple', symbol: sfs([252,210,218,140], sls([200,160,170,180], 1)) },
           { def: "COMMUNITY_NAME IN ('Saint John','Fredericton','Moncton')" })
@@ -291,9 +291,10 @@
     // ==================================================================
     var contours = L.esri.dynamicMapLayer({
       url: 'https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Contours/MapServer',
-      opacity: 0.55, pane: 'contoursP', format: 'png32', minZoom: 16,
+      opacity: 0.55, pane: 'contoursP', format: 'png24', minZoom: 16,
+      requestParams: { maxAllowableOffset: 5 },
       dynamicLayers: [
-        dl(1, { type: 'simple', symbol: sls([168,120,60,200], 0.4) }, {
+        dl(1, { type: 'simple', symbol: sls([168,120,60,200], 0.5) }, {
           labels: [
             { labelExpression: '[Contour]', labelPlacement: 'esriServerLinePlacementCenterAlong',
               symbol: ts([140,95,50,230], { family:'Tahoma', size:5 }, [255,255,240,180], 0.8),
@@ -433,7 +434,7 @@
     // ==================================================================
     var buildings = L.esri.dynamicMapLayer({
       url: 'https://geonb.snb.ca/arcgis/rest/services/GeoNB_SNB_Buildings/MapServer',
-      pane: 'buildingsP', format: 'png24', minZoom: 17,
+      pane: 'buildingsP', format: 'png24', minZoom: 16,
       dynamicLayers: [ dl(0, { type: 'simple', symbol: sfs([160,110,70,100], sls([130,85,50,160], 0.4)) }) ]
     }).addTo(map);
 
