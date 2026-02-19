@@ -660,9 +660,10 @@
           },
           {
             // ── Large scale (city / detail) ──
-            // Shows ALL road classes — local roads white (gray casing layer beneath)
+            // Local + minor roads only — arterials & freeways drawn by tier layers above
             id: 1,
             title: "Roads (large scale)",
+            definitionExpression: "Func_Road_Class NOT IN ('Freeway','Expressway/highway','Arterial','Collector')",
             renderer: {
               type: "unique-value",
               field: "Func_Road_Class",
@@ -711,6 +712,52 @@
             }
           }
         ]
+      });
+
+      // ── Road tier: arterials / collectors drawn over local roads ──
+      var roadsMidLayer = new MapImageLayer({
+        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_Basemap_NBRN/MapServer",
+        id: "roadsmid",
+        title: "Roads (Arterial/Collector)",
+        listMode: "hide",
+        imageFormat: "png24",
+        sublayers: [{
+          id: 1,
+          title: "Arterials & Collectors",
+          definitionExpression: "Func_Road_Class IN ('Arterial','Collector')",
+          renderer: {
+            type: "unique-value",
+            field: "Func_Road_Class",
+            defaultSymbol: { type: "simple-line", color: [255,170,0,255], width: 2.5 },
+            uniqueValueInfos: [
+              roadUVI("Arterial",  cArterial, 3.5),
+              roadUVI("Collector", cCollector, 2.5)
+            ]
+          }
+        }]
+      });
+
+      // ── Road tier: freeways always on top ──
+      var roadsTopLayer = new MapImageLayer({
+        url: "https://geonb.snb.ca/arcgis/rest/services/GeoNB_Basemap_NBRN/MapServer",
+        id: "roadstop",
+        title: "Roads (Freeways)",
+        listMode: "hide",
+        imageFormat: "png24",
+        sublayers: [{
+          id: 1,
+          title: "Freeways & Expressways",
+          definitionExpression: "Func_Road_Class IN ('Freeway','Expressway/highway')",
+          renderer: {
+            type: "unique-value",
+            field: "Func_Road_Class",
+            defaultSymbol: { type: "simple-line", color: [230,76,0,255], width: 6.5 },
+            uniqueValueInfos: [
+              roadUVI("Freeway",            cFreeway,    6.5),
+              roadUVI("Expressway/highway", cExpressway, 5.0)
+            ]
+          }
+        }]
       });
 
       // ==================================================================
@@ -986,7 +1033,7 @@
         "wildlife", "nationalparks", "parks",
         "localparks-fredericton", "localparks-moncton", "localparks-saintjohn",
         "cities", "counties", "contours", "railway",
-        "roadscasing", "roads", "parcels", "buildings", "schools", "placenames"
+        "roadscasing", "roads", "roadsmid", "roadstop", "parcels", "buildings", "schools", "placenames"
       ];
 
       function addInOrder(layer) {
@@ -1006,7 +1053,9 @@
           landCoverLayer,        // GroupLayer     (NRCan + clip mask)
           hydroLayer,            // 1 geonb req   (single NBHN export)
           countiesLayer,         // 1 geonb req
-          roadsLayer,            // 1 geonb req
+          roadsLayer,            // local + overview roads
+          roadsMidLayer,         // arterials/collectors (over local)
+          roadsTopLayer,         // freeways (topmost)
           placeNamesLayer        // 1 geonb req
         ]
       });
@@ -1082,6 +1131,12 @@
         expandTooltip: "Toggle Layers"
       });
       view.ui.add(layerExpand, "top-right");
+
+      // ── Sync road tier visibility with main Road Network toggle ──
+      roadsLayer.watch("visible", function (v) {
+        roadsMidLayer.visible = v;
+        roadsTopLayer.visible = v;
+      });
 
       // ── Popups ──
       view.popup.dockEnabled = true;
