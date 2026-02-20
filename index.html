@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>New Brunswick Base Map — Esri Leaflet</title>
+  <title>nb map</title>
 
   <!-- Leaflet 1.9.4 -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -11,6 +11,15 @@
 
   <!-- Esri Leaflet 3.0.12 -->
   <script src="https://unpkg.com/esri-leaflet@3.0.12/dist/esri-leaflet.js"></script>
+
+  <!-- Turf.js for measurements -->
+  <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
+
+  <!-- html2canvas for export -->
+  <script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+
+  <!-- Proj4js for NB Double Stereographic -->
+  <script src="https://unpkg.com/proj4@2.9.0/dist/proj4.js"></script>
 
   <style>
     html, body {
@@ -39,10 +48,154 @@
     }
     #attr-panel.open { display: block; }
     #attr-panel a { color: #0066cc; }
+
+    /* ── Leaflet tool buttons ── */
+    .leaflet-bar a.active { background: #d0e8ff !important; }
+
+    /* ── Tool panels ── */
+    .tool-panel {
+      display: none; position: fixed; z-index: 1001;
+      left: 54px; top: 10px;
+      min-width: 260px; max-width: 340px; background: rgba(255,255,255,0.96);
+      border-radius: 6px; box-shadow: 0 2px 10px rgba(0,0,0,0.25);
+      padding: 10px 14px; font: 12px/1.5 "Avenir Next", Arial, sans-serif; color: #333;
+    }
+    .tool-panel.open { display: block; }
+    .tool-panel h4 { margin: 0 0 6px 0; font-size: 13px; color: #222; }
+    .tool-panel label { display: block; margin: 4px 0; font-size: 11px; }
+    .tool-panel input[type="text"], .tool-panel select {
+      width: 100%; box-sizing: border-box; padding: 4px 6px; margin: 2px 0 6px;
+      border: 1px solid #ccc; border-radius: 3px; font-size: 11px;
+    }
+    .tool-panel .btn {
+      display: inline-block; padding: 4px 12px; margin: 4px 4px 4px 0;
+      background: #4a90d9; color: #fff; border: none; border-radius: 3px;
+      cursor: pointer; font-size: 11px;
+    }
+    .tool-panel .btn:hover { background: #3a7bc8; }
+    .tool-panel .btn-danger { background: #d9534f; }
+    .tool-panel .btn-danger:hover { background: #c9302c; }
+    .tool-panel .btn-secondary { background: #6c757d; }
+    .tool-panel .result-box {
+      background: #f5f5f5; padding: 6px 8px; border-radius: 3px;
+      margin: 6px 0; font: 11px/1.6 monospace; word-break: break-all;
+    }
+    .tool-panel .close-panel {
+      position: absolute; top: 4px; right: 8px; cursor: pointer;
+      font-size: 16px; color: #999; background: none; border: none;
+    }
+    .tool-panel .close-panel:hover { color: #333; }
+    .tool-panel .unit-group { display: flex; gap: 4px; margin: 4px 0 8px; flex-wrap: wrap; }
+    .tool-panel .unit-btn {
+      padding: 2px 8px; background: #e9e9e9; border: 1px solid #ccc;
+      border-radius: 3px; cursor: pointer; font-size: 10px;
+    }
+    .tool-panel .unit-btn.active { background: #4a90d9; color: #fff; border-color: #4a90d9; }
+
+    /* ── Legend in layer control ── */
+    .leaflet-control-layers-overlays label {
+      display: flex !important; align-items: center; gap: 6px;
+    }
+    .legend-swatch {
+      display: inline-block; width: 16px; height: 12px; border-radius: 2px;
+      flex-shrink: 0; border: 1px solid rgba(0,0,0,0.15);
+    }
+    .legend-line {
+      display: inline-block; width: 16px; height: 3px; border-radius: 1px;
+      flex-shrink: 0;
+    }
+
+    /* ── Draw toolbar ── */
+    .draw-tools { display: flex; gap: 4px; margin: 6px 0; flex-wrap: wrap; }
+    .draw-tools .btn { font-size: 10px; padding: 3px 8px; }
   </style>
 </head>
 <body>
   <div id="map"></div>
+
+
+  <!-- ── Tool Panels ── -->
+  <div class="tool-panel" id="panel-coords">
+    <button class="close-panel" onclick="closePanel('coords')">&times;</button>
+    <h4>Coordinates &amp; Elevation</h4>
+    <p style="font-size:11px;color:#666;margin:0 0 6px;">Click on the map to get coordinates and elevation.</p>
+    <div class="result-box" id="coord-result">Click the map…</div>
+    <button class="btn btn-danger" onclick="clearCoords()">Clear</button>
+  </div>
+
+  <div class="tool-panel" id="panel-measure">
+    <button class="close-panel" onclick="closePanel('measure')">&times;</button>
+    <h4>Measure Distance</h4>
+    <div class="unit-group" id="dist-units">
+      <button class="unit-btn active" data-unit="m">Metres</button>
+      <button class="unit-btn" data-unit="km">Kilometres</button>
+      <button class="unit-btn" data-unit="ft">Feet</button>
+      <button class="unit-btn" data-unit="mi">Miles</button>
+      <button class="unit-btn" data-unit="ch">Chains</button>
+    </div>
+    <p style="font-size:11px;color:#666;margin:0 0 4px;">Click points on the map. Double-click to finish.</p>
+    <div class="result-box" id="measure-result">—</div>
+    <button class="btn btn-danger" onclick="clearMeasure()">Clear</button>
+  </div>
+
+  <div class="tool-panel" id="panel-area">
+    <button class="close-panel" onclick="closePanel('area')">&times;</button>
+    <h4>Measure Area</h4>
+    <div class="unit-group" id="area-units">
+      <button class="unit-btn active" data-unit="m2">m²</button>
+      <button class="unit-btn" data-unit="ha">Hectares</button>
+      <button class="unit-btn" data-unit="km2">km²</button>
+      <button class="unit-btn" data-unit="ft2">ft²</button>
+      <button class="unit-btn" data-unit="ac">Acres</button>
+      <button class="unit-btn" data-unit="mi2">mi²</button>
+    </div>
+    <p style="font-size:11px;color:#666;margin:0 0 4px;">Click vertices. Double-click to close polygon.</p>
+    <div class="result-box" id="area-result">—</div>
+    <button class="btn btn-danger" onclick="clearArea()">Clear</button>
+  </div>
+
+  <div class="tool-panel" id="panel-goto">
+    <button class="close-panel" onclick="closePanel('goto')">&times;</button>
+    <h4>Go to Coordinates</h4>
+    <label>Latitude<input type="text" id="goto-lat" placeholder="e.g. 46.5"></label>
+    <label>Longitude<input type="text" id="goto-lng" placeholder="e.g. -66.5"></label>
+    <label>Zoom level (optional)<input type="text" id="goto-zoom" placeholder="e.g. 14"></label>
+    <button class="btn" onclick="goToCoords()">Go</button>
+  </div>
+
+  <div class="tool-panel" id="panel-export">
+    <button class="close-panel" onclick="closePanel('export')">&times;</button>
+    <h4>Export Map</h4>
+    <p style="font-size:11px;color:#666;margin:0 0 8px;">Export the current view for use in GIS software or sharing.</p>
+    <button class="btn" onclick="exportGeoTIFF()" style="width:100%;text-align:center;margin-bottom:4px;">GeoTIFF (for GIS / Avenza)</button>
+    <button class="btn btn-secondary" onclick="exportPNG()" style="width:100%;text-align:center;">PNG Screenshot</button>
+    <div id="export-status" style="font-size:11px;color:#666;margin-top:6px;"></div>
+  </div>
+
+  <div class="tool-panel" id="panel-adddata">
+    <button class="close-panel" onclick="closePanel('adddata')">&times;</button>
+    <h4>Add Data</h4>
+    <p style="font-size:11px;color:#666;margin:0 0 6px;">Load a GeoJSON, KML, or GPX file.</p>
+    <input type="file" id="add-file-input" accept=".geojson,.json,.kml,.gpx" style="font-size:11px;margin:4px 0;">
+    <div id="added-layers-list" style="margin-top:6px;font-size:11px;"></div>
+  </div>
+
+  <div class="tool-panel" id="panel-draw">
+    <button class="close-panel" onclick="closePanel('draw')">&times;</button>
+    <h4>Draw on Map</h4>
+    <div class="draw-tools">
+      <button class="btn" onclick="startDraw('marker')">Point</button>
+      <button class="btn" onclick="startDraw('polyline')">Line</button>
+      <button class="btn" onclick="startDraw('polygon')">Polygon</button>
+    </div>
+    <p style="font-size:11px;color:#666;margin:0 0 4px;">Click to place points. Click Finish to complete lines/polygons.</p>
+    <button class="btn btn-secondary" id="draw-finish-btn" onclick="finishDraw()" style="display:none;">Finish</button>
+    <div id="draw-count" style="font-size:11px;margin:4px 0;">0 features drawn</div>
+    <button class="btn" onclick="exportDrawGeoJSON()">Export GeoJSON</button>
+    <button class="btn btn-danger" onclick="clearDraw()">Clear All</button>
+  </div>
+
+
   <button id="attr-btn" title="Credits">i</button>
   <div id="attr-panel">
     <strong>Data Sources</strong><br>
@@ -56,6 +209,7 @@
     Local Parks &mdash; Fredericton, Moncton, Saint John<br>
     Counties &amp; Parishes &mdash; GeoNB / SNB<br>
     Communities &mdash; GeoNB / DPS<br>
+    Imagery &mdash; Esri / Maxar / Earthstar<br>
     Contours &mdash; GeoNB / SNB<br>
     Railway (NRWN) &mdash; GeoNB / SNB<br>
     Roads (NBRN) &mdash; GeoNB<br>
@@ -84,9 +238,11 @@
 
     // ── Custom panes for draw order ──
     var panes = [
-      ['hillshadeP', 200], ['landcoverP', 201], ['lcMaskP', 202], ['hydroP', 210],
-      ['crownlandP', 215], ['wildlifeP', 216], ['natparksP', 217],
-      ['parksP', 218], ['localparksP', 219],
+      ['imageryP', 199],
+      ['hillshadeP', 200], ['landcoverP', 201], ['lcMaskP', 202],
+      ['crownlandP', 203], ['wildlifeP', 204], ['natparksP', 205],
+      ['parksP', 206], ['localparksP', 207],
+      ['hydroP', 210],
       ['countiesP', 230], ['contoursP', 235], ['railwayP', 238],
       ['casingP', 240], ['roadsP', 245], ['roadsMidP', 246],
       ['roadsTopP', 247], ['parcelsP', 250], ['trailsP', 252], ['buildingsP', 255],
@@ -97,6 +253,7 @@
       map.getPane(p[0]).style.zIndex = p[1];
     });
     map.getPane('hillshadeP').style.mixBlendMode = 'multiply';
+    map.getPane('imageryP').style.opacity = '0.8';
 
     // ── REST API symbol helpers ──
     function sfs(color, outline, style) {
@@ -132,6 +289,13 @@
     var cFwy = [230,76,0,255], cArt = [255,170,0,255], cCol = [255,170,0,255],
         cNum = [255,231,115,255], cWht = [255,255,255,255], cRes = [115,76,0,255],
         cGry = [200,200,200,255], cRamp = [220,200,160,255], cDim = [220,220,220,255];
+
+    // ==================================================================
+    //  0. ESRI IMAGERY
+    // ==================================================================
+    var imagery = L.esri.basemapLayer('Imagery', {
+      pane: 'imageryP'
+    });
 
     // ==================================================================
     //  1. HILLSHADE
@@ -173,12 +337,12 @@
     // ==================================================================
     var hydro = L.esri.dynamicMapLayer({
       url: 'https://geonb.snb.ca/arcgis/rest/services/GeoNB_DNR_NBHN/MapServer',
-      pane: 'hydroP', format: 'png24',
+      pane: 'hydroP', format: 'png32', opacity: 0.7,
       dynamicLayers: [
-        dl(11, { type: 'simple', symbol: sfs([130,175,210,160], sls([130,175,210,120], 0.4), 'esriSFSForwardDiagonal') }),
-        dl(13, { type: 'simple', symbol: sfs([158,187,215,255]) }),
-        dl(10, { type: 'simple', symbol: sls([158,187,215,255], 1.4) }),
-        dl(16, { type: 'simple', symbol: sfs([158,187,215,255]) })
+        dl(11, { type: 'simple', symbol: sfs([110,155,195,255], sls([110,155,195,255], 0.4), 'esriSFSForwardDiagonal') }),
+        dl(13, { type: 'simple', symbol: sfs([120,165,205,255]) }),
+        dl(10, { type: 'simple', symbol: sls([120,165,205,255], 1.2) }),
+        dl(16, { type: 'simple', symbol: sfs([120,165,205,255]) })
       ]
     }).addTo(map);
 
@@ -230,15 +394,16 @@
     var fredParks = L.esri.featureLayer({
       url: 'https://services2.arcgis.com/iLWAxhpxafhOza2U/arcgis/rest/services/Park_Open_Space/FeatureServer/0',
       pane: 'localparksP', minZoom: 13, style: lpStyle
-    }).addTo(map);
+    });
     var moncParks = L.esri.featureLayer({
       url: 'https://services1.arcgis.com/E26PuSoie2Y7bbyI/arcgis/rest/services/Parks/FeatureServer/0',
       pane: 'localparksP', minZoom: 13, style: lpStyle
-    }).addTo(map);
+    });
     var sjParks = L.esri.featureLayer({
       url: 'https://services.arcgis.com/DLk7hgTJeJILuEBg/ArcGIS/rest/services/Parks3/FeatureServer/0',
       pane: 'localparksP', minZoom: 13, style: lpStyle
-    }).addTo(map);
+    });
+    var cityParks = L.layerGroup([fredParks, moncParks, sjParks]).addTo(map);
 
     // ==================================================================
     //  4. COUNTIES & PARISHES (split for debugging)
@@ -286,12 +451,7 @@
     // minScale/maxScale: 0 overrides the server's native scale limits
     contourDynamicLayers = [
         dl(0, { type: 'simple', symbol: sls([140,95,45,255], 1.2) }, {
-          minScale: 0, maxScale: 0,
-          labels: [
-            { labelExpression: '[Contour]', labelPlacement: 'esriServerLinePlacementCenterAlong',
-              symbol: ts([120,80,35,255], { family:'Arial', size:6 }, [255,255,240,200], 0.8),
-              minScale: 15000, maxScale: 0 }
-          ]
+          minScale: 0, maxScale: 0
         }),
         dl(1, { type: 'simple', symbol: sls([165,125,75,255], 0.6) }, {
           minScale: 0, maxScale: 0
@@ -522,7 +682,11 @@
     // ==================================================================
     L.control.scale({ imperial: true, metric: true }).addTo(map);
 
-    // ── GPS locate button ──
+    // ── GPS locate button (toggleable) ──
+    var gpsActive = false;
+    var gpsWatchId = null;
+    var locateMarker = null;
+    var gpsBtn = null;
     var LocateControl = L.Control.extend({
       options: { position: 'topleft' },
       onAdd: function () {
@@ -533,23 +697,36 @@
         a.setAttribute('role', 'button');
         a.style.cssText = 'display:flex;align-items:center;justify-content:center;width:30px;height:30px;line-height:30px;text-align:center;';
         a.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="2.5"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/></svg>';
+        gpsBtn = a;
         L.DomEvent.disableClickPropagation(container);
         L.DomEvent.on(a, 'click', function (e) {
           L.DomEvent.preventDefault(e);
-          map.locate({ setView: true, maxZoom: 16 });
+          if (gpsActive) {
+            // Turn GPS off
+            gpsActive = false;
+            gpsBtn.style.backgroundColor = '';
+            map.stopLocate();
+            if (locateMarker) { map.removeLayer(locateMarker); locateMarker = null; }
+          } else {
+            // Turn GPS on
+            gpsActive = true;
+            gpsBtn.style.backgroundColor = '#cce5ff';
+            map.locate({ setView: true, maxZoom: 16, watch: true });
+          }
         });
         return container;
       }
     });
     new LocateControl().addTo(map);
-    var locateMarker = null;
     map.on('locationfound', function (e) {
+      if (!gpsActive) return;
       if (locateMarker) map.removeLayer(locateMarker);
       locateMarker = L.circleMarker(e.latlng, { radius: 8, fillColor: '#4285f4', color: '#fff', weight: 2, fillOpacity: 0.9, pane: 'markerPane' }).addTo(map);
     });
-    map.on('locationerror', function () { alert('Unable to find your location.'); });
+    map.on('locationerror', function () { if (gpsActive) { alert('Unable to find your location.'); gpsActive = false; gpsBtn.style.backgroundColor = ''; } });
 
     var overlays = {
+      'Esri Imagery': imagery,
       'Hillshade': hillshade,
       'Land Cover': landCover,
       'Hydrography': hydro,
@@ -557,9 +734,7 @@
       'Wildlife Refuges': wildlife,
       'National Parks': nationalParks,
       'Provincial Parks': parks,
-      'Fredericton Parks': fredParks,
-      'Moncton Parks': moncParks,
-      'Saint John Parks': sjParks,
+      'City Parks': cityParks,
       'Counties': counties,
       'Parishes': parishes,
       'Contours': contours,
@@ -580,6 +755,700 @@
         else { map.removeLayer(roadsLocal); map.removeLayer(roadsMid); map.removeLayer(roadsTop); }
       }
     });
+
+    // ==================================================================
+    //  PROJ4 — NB Double Stereographic (EPSG:2953)
+    // ==================================================================
+    proj4.defs('EPSG:2953', '+proj=sterea +lat_0=46.5 +lon_0=-66.5 +k=0.999912 +x_0=2500000 +y_0=7500000 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs');
+
+    // ==================================================================
+    //  TOOL PANEL FRAMEWORK
+    // ==================================================================
+    var activePanel = null;
+    var activeTool = null;
+
+    function openPanel(name) {
+      if (activePanel === name) { closePanel(name); return; }
+      if (activePanel) closePanel(activePanel);
+      var panel = document.getElementById('panel-' + name);
+      var btn = document.getElementById('tb-' + name);
+      // Position panel next to the toolbar button
+      if (btn) {
+        var rect = btn.getBoundingClientRect();
+        panel.style.top = rect.top + 'px';
+        panel.style.left = (rect.right + 8) + 'px';
+      }
+      panel.classList.add('open');
+      btn.classList.add('active');
+      activePanel = name;
+      activeTool = name;
+    }
+    function closePanel(name) {
+      document.getElementById('panel-' + name).classList.remove('open');
+      document.getElementById('tb-' + name).classList.remove('active');
+      if (activePanel === name) activePanel = null;
+      if (activeTool === name) activeTool = null;
+      // clean up cursors
+      map.getContainer().style.cursor = '';
+    }
+
+    // ── Build tool sidebar as a Leaflet control ──
+    var ToolSidebar = L.Control.extend({
+      options: { position: 'topleft' },
+      onAdd: function () {
+        var toolDefs = [
+          { id: 'coords', title: 'Coordinates & Elevation', icon: '<path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5" fill="#fff" stroke="none"/>' },
+          { id: 'measure', title: 'Measure Distance', icon: '<path d="M3 21L21 3M8 21v-4M13 16v-4M18 11V7"/>' },
+          { id: 'area', title: 'Measure Area', icon: '<rect x="4" y="4" width="16" height="16" rx="1"/><path d="M4 9h16M4 14h16M9 4v16M14 4v16" stroke-width="0.7" opacity="0.4"/>' },
+          { id: 'goto', title: 'Go to Coordinates', icon: '<path d="M21 3L3 10l7 3 3 7z"/>' },
+          { id: 'adddata', title: 'Add Data', icon: '<path d="M12 5v14M5 12h14"/>' },
+          { id: 'draw', title: 'Draw & Export GeoJSON', icon: '<path d="M12 19l7-7 3 3-7 7H12v-3zM18 12l-1.5-1.5M2 2l5 5M7 2l-5 5"/>' },
+          { id: 'export', title: 'Export Map', icon: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>' }
+        ];
+        var container = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+        L.DomEvent.disableClickPropagation(container);
+        toolDefs.forEach(function (t) {
+          var a = L.DomUtil.create('a', '', container);
+          a.href = '#';
+          a.id = 'tb-' + t.id;
+          a.title = t.title;
+          a.setAttribute('role', 'button');
+          a.style.cssText = 'display:flex;align-items:center;justify-content:center;width:30px;height:30px;';
+          a.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="2">' + t.icon + '</svg>';
+          L.DomEvent.on(a, 'click', function (e) {
+            L.DomEvent.preventDefault(e);
+            openPanel(t.id);
+          });
+        });
+        return container;
+      }
+    });
+    new ToolSidebar().addTo(map);
+
+    // ==================================================================
+    //  TOOL 1: COORDINATES & ELEVATION
+    // ==================================================================
+    var coordMarker = null;
+    function clearCoords() {
+      if (coordMarker) { map.removeLayer(coordMarker); coordMarker = null; }
+      document.getElementById('coord-result').textContent = 'Click the map…';
+    }
+    map.on('click', function (e) {
+      if (activeTool !== 'coords') return;
+      var ll = e.latlng;
+      var nbds = proj4('EPSG:4326', 'EPSG:2953', [ll.lng, ll.lat]);
+      if (coordMarker) map.removeLayer(coordMarker);
+      coordMarker = L.circleMarker(ll, { radius: 6, fillColor: '#e63946', color: '#fff', weight: 2, fillOpacity: 0.9 }).addTo(map);
+
+      var box = document.getElementById('coord-result');
+      box.innerHTML = '<b>WGS84:</b> ' + ll.lat.toFixed(6) + ', ' + ll.lng.toFixed(6) +
+        '<br><b>NB Stereo:</b> ' + nbds[0].toFixed(2) + ' E, ' + nbds[1].toFixed(2) + ' N' +
+        '<br><b>Elevation:</b> querying…';
+
+      // Query DEM elevation
+      var url = 'https://geonb.snb.ca/image/rest/services/Elevation/DEM_Raw_MNE_Brut/ImageServer/identify' +
+        '?geometry=%7B%22x%22%3A' + ll.lng + '%2C%22y%22%3A' + ll.lat + '%7D' +
+        '&geometryType=esriGeometryPoint&returnGeometry=false&returnCatalogItems=false' +
+        '&f=json&inSR=4326';
+      fetch(url).then(function (r) { return r.json(); }).then(function (d) {
+        var elev = d.value;
+        if (elev == null && d.pixel) elev = d.pixel.properties && d.pixel.properties.Values ? d.pixel.properties.Values[0] : null;
+        if (elev != null && elev !== 'NoData' && elev !== 'null') {
+          var m = parseFloat(elev);
+          if (!isNaN(m)) {
+            box.innerHTML = box.innerHTML.replace('querying…',
+              m.toFixed(1) + ' m (' + (m * 3.28084).toFixed(1) + ' ft)');
+          } else {
+            box.innerHTML = box.innerHTML.replace('querying…', 'N/A');
+          }
+        } else {
+          box.innerHTML = box.innerHTML.replace('querying…', 'N/A');
+        }
+      }).catch(function (err) {
+        console.error('Elevation query error:', err);
+        box.innerHTML = box.innerHTML.replace('querying…', 'error');
+      });
+    });
+
+    // ==================================================================
+    //  TOOL 2: MEASURE DISTANCE
+    // ==================================================================
+    var measurePts = [], measureLine = null, measureMarkers = [], measureUnit = 'm';
+    var distConvert = { m: 1, km: 0.001, ft: 3.28084, mi: 0.000621371, ch: 0.0497097 };
+
+    document.getElementById('dist-units').addEventListener('click', function (e) {
+      if (!e.target.classList.contains('unit-btn')) return;
+      document.querySelectorAll('#dist-units .unit-btn').forEach(function (b) { b.classList.remove('active'); });
+      e.target.classList.add('active');
+      measureUnit = e.target.dataset.unit;
+      updateMeasureResult();
+    });
+
+    function updateMeasureResult() {
+      if (measurePts.length < 2) { document.getElementById('measure-result').textContent = '—'; return; }
+      var coords = measurePts.map(function (p) { return [p.lng, p.lat]; });
+      var line = turf.lineString(coords);
+      var dist = turf.length(line, { units: 'meters' });
+      var val = dist * distConvert[measureUnit];
+      var labels = { m: 'm', km: 'km', ft: 'ft', mi: 'mi', ch: 'chains' };
+      document.getElementById('measure-result').textContent = val.toFixed(2) + ' ' + labels[measureUnit];
+    }
+
+    map.on('click', function (e) {
+      if (activeTool !== 'measure') return;
+      measurePts.push(e.latlng);
+      var mk = L.circleMarker(e.latlng, { radius: 4, fillColor: '#ff6b35', color: '#fff', weight: 2, fillOpacity: 1 }).addTo(map);
+      measureMarkers.push(mk);
+      if (measureLine) map.removeLayer(measureLine);
+      if (measurePts.length >= 2) {
+        measureLine = L.polyline(measurePts, { color: '#ff6b35', weight: 2, dashArray: '6,4' }).addTo(map);
+      }
+      updateMeasureResult();
+    });
+
+    function clearMeasure() {
+      measurePts = [];
+      if (measureLine) { map.removeLayer(measureLine); measureLine = null; }
+      measureMarkers.forEach(function (m) { map.removeLayer(m); });
+      measureMarkers = [];
+      document.getElementById('measure-result').textContent = '—';
+    }
+
+    // ==================================================================
+    //  TOOL 3: MEASURE AREA
+    // ==================================================================
+    var areaPts = [], areaPoly = null, areaMarkers = [], areaUnit = 'm2';
+    var areaConvert = { m2: 1, ha: 0.0001, km2: 1e-6, ft2: 10.7639, ac: 0.000247105, mi2: 3.861e-7 };
+
+    document.getElementById('area-units').addEventListener('click', function (e) {
+      if (!e.target.classList.contains('unit-btn')) return;
+      document.querySelectorAll('#area-units .unit-btn').forEach(function (b) { b.classList.remove('active'); });
+      e.target.classList.add('active');
+      areaUnit = e.target.dataset.unit;
+      updateAreaResult();
+    });
+
+    function updateAreaResult() {
+      if (areaPts.length < 3) { document.getElementById('area-result').textContent = '—'; return; }
+      var coords = areaPts.map(function (p) { return [p.lng, p.lat]; });
+      coords.push(coords[0]); // close ring
+      var poly = turf.polygon([coords]);
+      var a = turf.area(poly);
+      var val = a * areaConvert[areaUnit];
+      var labels = { m2: 'm²', ha: 'ha', km2: 'km²', ft2: 'ft²', ac: 'acres', mi2: 'mi²' };
+      document.getElementById('area-result').textContent = val.toFixed(2) + ' ' + labels[areaUnit];
+    }
+
+    map.on('click', function (e) {
+      if (activeTool !== 'area') return;
+      areaPts.push(e.latlng);
+      var mk = L.circleMarker(e.latlng, { radius: 4, fillColor: '#8338ec', color: '#fff', weight: 2, fillOpacity: 1 }).addTo(map);
+      areaMarkers.push(mk);
+      if (areaPoly) map.removeLayer(areaPoly);
+      if (areaPts.length >= 3) {
+        areaPoly = L.polygon(areaPts, { color: '#8338ec', weight: 2, fillOpacity: 0.15 }).addTo(map);
+      }
+      updateAreaResult();
+    });
+
+    function clearArea() {
+      areaPts = [];
+      if (areaPoly) { map.removeLayer(areaPoly); areaPoly = null; }
+      areaMarkers.forEach(function (m) { map.removeLayer(m); });
+      areaMarkers = [];
+      document.getElementById('area-result').textContent = '—';
+    }
+
+    // ==================================================================
+    //  TOOL 4: GO TO COORDINATES
+    // ==================================================================
+    var gotoMarker = null;
+    function goToCoords() {
+      var lat = parseFloat(document.getElementById('goto-lat').value);
+      var lng = parseFloat(document.getElementById('goto-lng').value);
+      var z = parseInt(document.getElementById('goto-zoom').value) || 14;
+      if (isNaN(lat) || isNaN(lng)) { alert('Enter valid coordinates.'); return; }
+      map.setView([lat, lng], z);
+      if (gotoMarker) map.removeLayer(gotoMarker);
+      gotoMarker = L.marker([lat, lng]).addTo(map).bindPopup(lat.toFixed(6) + ', ' + lng.toFixed(6)).openPopup();
+    }
+
+    // ==================================================================
+    //  TOOL 6: ADD DATA (GeoJSON / KML / GPX)
+    // ==================================================================
+    var addedLayers = [];
+    document.getElementById('add-file-input').addEventListener('change', function (e) {
+      var file = e.target.files[0];
+      if (!file) return;
+      var reader = new FileReader();
+      reader.onload = function (ev) {
+        var text = ev.target.result;
+        var geojson;
+        var ext = file.name.split('.').pop().toLowerCase();
+
+        if (ext === 'kml') {
+          var parser = new DOMParser();
+          var kml = parser.parseFromString(text, 'text/xml');
+          geojson = kmlToGeoJSON(kml);
+        } else if (ext === 'gpx') {
+          var parser2 = new DOMParser();
+          var gpx = parser2.parseFromString(text, 'text/xml');
+          geojson = gpxToGeoJSON(gpx);
+        } else {
+          geojson = JSON.parse(text);
+        }
+
+        var layer = L.geoJSON(geojson, {
+          style: { color: '#e63946', weight: 2, fillOpacity: 0.2 },
+          pointToLayer: function (f, ll) {
+            return L.circleMarker(ll, { radius: 6, fillColor: '#e63946', color: '#fff', weight: 2, fillOpacity: 0.8 });
+          },
+          onEachFeature: function (feature, layer) {
+            if (feature.properties) {
+              var html = Object.keys(feature.properties).map(function (k) {
+                return '<b>' + k + ':</b> ' + feature.properties[k];
+              }).join('<br>');
+              layer.bindPopup(html);
+            }
+          }
+        }).addTo(map);
+        map.fitBounds(layer.getBounds());
+        addedLayers.push({ name: file.name, layer: layer });
+        updateAddedLayersList();
+      };
+      reader.readAsText(file);
+      e.target.value = '';
+    });
+
+    function updateAddedLayersList() {
+      var html = addedLayers.map(function (l, i) {
+        return '<div style="display:flex;justify-content:space-between;align-items:center;margin:2px 0;">' +
+          '<span>' + l.name + '</span>' +
+          '<button class="btn btn-danger" style="font-size:9px;padding:1px 6px;" onclick="removeAddedLayer(' + i + ')">×</button></div>';
+      }).join('');
+      document.getElementById('added-layers-list').innerHTML = html;
+    }
+
+    function removeAddedLayer(i) {
+      map.removeLayer(addedLayers[i].layer);
+      addedLayers.splice(i, 1);
+      updateAddedLayersList();
+    }
+
+    // Simple KML→GeoJSON converter
+    function kmlToGeoJSON(kml) {
+      var features = [];
+      var placemarks = kml.querySelectorAll('Placemark');
+      placemarks.forEach(function (pm) {
+        var name = pm.querySelector('name');
+        var coords;
+        var point = pm.querySelector('Point coordinates');
+        var line = pm.querySelector('LineString coordinates');
+        var poly = pm.querySelector('Polygon outerBoundaryIs LinearRing coordinates');
+        var feature = { type: 'Feature', properties: { name: name ? name.textContent : '' } };
+        if (point) {
+          var c = point.textContent.trim().split(',');
+          feature.geometry = { type: 'Point', coordinates: [parseFloat(c[0]), parseFloat(c[1])] };
+        } else if (line) {
+          feature.geometry = { type: 'LineString', coordinates: parseKMLCoords(line.textContent) };
+        } else if (poly) {
+          feature.geometry = { type: 'Polygon', coordinates: [parseKMLCoords(poly.textContent)] };
+        }
+        if (feature.geometry) features.push(feature);
+      });
+      return { type: 'FeatureCollection', features: features };
+    }
+    function parseKMLCoords(str) {
+      return str.trim().split(/\s+/).map(function (s) {
+        var c = s.split(',');
+        return [parseFloat(c[0]), parseFloat(c[1])];
+      });
+    }
+
+    // Simple GPX→GeoJSON converter
+    function gpxToGeoJSON(gpx) {
+      var features = [];
+      gpx.querySelectorAll('wpt').forEach(function (wpt) {
+        features.push({
+          type: 'Feature',
+          properties: { name: (wpt.querySelector('name') || {}).textContent || '' },
+          geometry: { type: 'Point', coordinates: [parseFloat(wpt.getAttribute('lon')), parseFloat(wpt.getAttribute('lat'))] }
+        });
+      });
+      gpx.querySelectorAll('trk').forEach(function (trk) {
+        trk.querySelectorAll('trkseg').forEach(function (seg) {
+          var coords = [];
+          seg.querySelectorAll('trkpt').forEach(function (pt) {
+            coords.push([parseFloat(pt.getAttribute('lon')), parseFloat(pt.getAttribute('lat'))]);
+          });
+          if (coords.length) features.push({
+            type: 'Feature',
+            properties: { name: (trk.querySelector('name') || {}).textContent || '' },
+            geometry: { type: 'LineString', coordinates: coords }
+          });
+        });
+      });
+      gpx.querySelectorAll('rte').forEach(function (rte) {
+        var coords = [];
+        rte.querySelectorAll('rtept').forEach(function (pt) {
+          coords.push([parseFloat(pt.getAttribute('lon')), parseFloat(pt.getAttribute('lat'))]);
+        });
+        if (coords.length) features.push({
+          type: 'Feature',
+          properties: { name: (rte.querySelector('name') || {}).textContent || '' },
+          geometry: { type: 'LineString', coordinates: coords }
+        });
+      });
+      return { type: 'FeatureCollection', features: features };
+    }
+
+    // ==================================================================
+    //  TOOL 7: DRAW & EXPORT GEOJSON
+    // ==================================================================
+    var drawnFeatures = L.featureGroup().addTo(map);
+    var drawMode = null, drawPts = [], drawTempLine = null, drawTempPoly = null, drawTempMarkers = [];
+
+    function startDraw(mode) {
+      clearDrawTemp();
+      drawMode = mode;
+      map.getContainer().style.cursor = 'crosshair';
+      if (mode === 'marker') {
+        // Single click to place
+      }
+    }
+
+    function updateFinishBtn() {
+      var btn = document.getElementById('draw-finish-btn');
+      if (drawMode === 'polyline' && drawPts.length >= 2) btn.style.display = '';
+      else if (drawMode === 'polygon' && drawPts.length >= 3) btn.style.display = '';
+      else btn.style.display = 'none';
+    }
+
+    map.on('click', function (e) {
+      if (!drawMode || activeTool !== 'draw') return;
+
+      if (drawMode === 'marker') {
+        var mk = L.circleMarker(e.latlng, { radius: 6, fillColor: '#2d6a4f', color: '#fff', weight: 2, fillOpacity: 0.8 });
+        drawnFeatures.addLayer(mk);
+        updateDrawCount();
+        return;
+      }
+
+      drawPts.push(e.latlng);
+      var dm = L.circleMarker(e.latlng, { radius: 3, fillColor: '#2d6a4f', color: '#fff', weight: 1, fillOpacity: 1 }).addTo(map);
+      drawTempMarkers.push(dm);
+
+      if (drawMode === 'polyline' && drawPts.length >= 2) {
+        if (drawTempLine) map.removeLayer(drawTempLine);
+        drawTempLine = L.polyline(drawPts, { color: '#2d6a4f', weight: 2 }).addTo(map);
+      }
+      if (drawMode === 'polygon' && drawPts.length >= 3) {
+        if (drawTempPoly) map.removeLayer(drawTempPoly);
+        drawTempPoly = L.polygon(drawPts, { color: '#2d6a4f', weight: 2, fillOpacity: 0.15 }).addTo(map);
+      }
+      updateFinishBtn();
+    });
+
+    function finishDraw() {
+      if (drawMode === 'polyline' && drawPts.length >= 2) {
+        var pl = L.polyline(drawPts, { color: '#2d6a4f', weight: 2 });
+        drawnFeatures.addLayer(pl);
+      }
+      if (drawMode === 'polygon' && drawPts.length >= 3) {
+        var pg = L.polygon(drawPts, { color: '#2d6a4f', weight: 2, fillOpacity: 0.2 });
+        drawnFeatures.addLayer(pg);
+      }
+      clearDrawTemp();
+      updateDrawCount();
+      document.getElementById('draw-finish-btn').style.display = 'none';
+    }
+
+    function clearDrawTemp() {
+      drawPts = [];
+      if (drawTempLine) { map.removeLayer(drawTempLine); drawTempLine = null; }
+      if (drawTempPoly) { map.removeLayer(drawTempPoly); drawTempPoly = null; }
+      drawTempMarkers.forEach(function (m) { map.removeLayer(m); });
+      drawTempMarkers = [];
+    }
+
+    function updateDrawCount() {
+      var n = drawnFeatures.getLayers().length;
+      document.getElementById('draw-count').textContent = n + ' feature' + (n !== 1 ? 's' : '') + ' drawn';
+    }
+
+    function exportDrawGeoJSON() {
+      var fc = { type: 'FeatureCollection', features: [] };
+      drawnFeatures.eachLayer(function (layer) {
+        var geojson = layer.toGeoJSON();
+        fc.features.push(geojson);
+      });
+      if (fc.features.length === 0) { alert('No features drawn yet.'); return; }
+      var blob = new Blob([JSON.stringify(fc, null, 2)], { type: 'application/json' });
+      var link = document.createElement('a');
+      link.download = 'drawing.geojson';
+      link.href = URL.createObjectURL(blob);
+      link.click();
+    }
+
+    function clearDraw() {
+      drawnFeatures.clearLayers();
+      clearDrawTemp();
+      updateDrawCount();
+    }
+
+    // ==================================================================
+    //  TOOL 8: EXPORT MAP
+    // ==================================================================
+
+    // Fetch visible imagery as a single CORS-enabled image from Esri REST export
+    function fetchImageryImage(bounds, w, h) {
+      var bbox = bounds.getWest() + ',' + bounds.getSouth() + ',' + bounds.getEast() + ',' + bounds.getNorth();
+      var url = 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export' +
+        '?bbox=' + bbox + '&bboxSR=4326&imageSR=4326&size=' + w + ',' + h +
+        '&format=png32&transparent=true&f=image';
+      return new Promise(function (resolve, reject) {
+        var img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = function () { resolve(img); };
+        img.onerror = function () { resolve(null); }; // graceful — skip imagery if it fails
+        img.src = url;
+      });
+    }
+
+    // Composite export: fetch imagery separately, capture overlays via html2canvas, merge
+    function captureComposite(statusEl) {
+      var container = map.getContainer();
+      var w = container.offsetWidth;
+      var h = container.offsetHeight;
+      var bounds = map.getBounds();
+      var imageryVisible = map.hasLayer(imagery);
+
+      // Hide imagery tiles so html2canvas doesn't hit cross-origin tiles
+      var imageryPane = map.getPane('imageryP');
+      var origDisplay = '';
+      if (imageryPane) { origDisplay = imageryPane.style.display; imageryPane.style.display = 'none'; }
+
+      // Fetch imagery from REST endpoint (CORS) while capturing overlays in parallel
+      var imageryPromise = imageryVisible ? fetchImageryImage(bounds, w, h) : Promise.resolve(null);
+      var overlayPromise = html2canvas(container, { useCORS: true, allowTaint: false, logging: false });
+
+      return Promise.all([imageryPromise, overlayPromise]).then(function (results) {
+        // Restore imagery pane
+        if (imageryPane) imageryPane.style.display = origDisplay;
+
+        var imgEl = results[0];
+        var overlayCanvas = results[1];
+
+        // Composite: imagery on bottom, overlays on top
+        var outCanvas = document.createElement('canvas');
+        outCanvas.width = w; outCanvas.height = h;
+        var ctx = outCanvas.getContext('2d');
+        if (imgEl) ctx.drawImage(imgEl, 0, 0, w, h);
+        ctx.drawImage(overlayCanvas, 0, 0);
+        return outCanvas;
+      }).catch(function (err) {
+        if (imageryPane) imageryPane.style.display = origDisplay;
+        throw err;
+      });
+    }
+
+    // Build a single-file GeoTIFF with embedded georeferencing (WGS84)
+    function buildGeoTIFF(canvas, bounds) {
+      var w = canvas.width;
+      var h = canvas.height;
+
+      // Extract RGB from RGBA canvas data
+      var ctx = canvas.getContext('2d');
+      var imgData = ctx.getImageData(0, 0, w, h);
+      var rgba = imgData.data;
+      var rgbLen = w * h * 3;
+
+      // Geo parameters
+      var pixScaleX = (bounds.getEast() - bounds.getWest()) / w;
+      var pixScaleY = (bounds.getNorth() - bounds.getSouth()) / h;
+      var tieX = bounds.getWest();
+      var tieY = bounds.getNorth();
+
+      // TIFF structure layout
+      var numEntries = 12;
+      var ifdOffset = 8;
+      var ifdSize = 2 + numEntries * 12 + 4;
+      var extraStart = ifdOffset + ifdSize;
+      var bpsOff = extraStart;           // BitsPerSample: 3 SHORTs = 6 bytes
+      var pscOff = bpsOff + 6;           // ModelPixelScale: 3 DOUBLEs = 24 bytes
+      var tieOff = pscOff + 24;          // ModelTiepoint: 6 DOUBLEs = 48 bytes
+      var gkOff  = tieOff + 48;          // GeoKeyDirectory: 16 SHORTs = 32 bytes
+      var imgOff = gkOff + 32;           // Image data starts here
+      var totalSize = imgOff + rgbLen;
+
+      var buf = new ArrayBuffer(totalSize);
+      var dv = new DataView(buf);
+      var p = 0;
+
+      function u16(v) { dv.setUint16(p, v, true); p += 2; }
+      function u32(v) { dv.setUint32(p, v, true); p += 4; }
+      function f64(v) { dv.setFloat64(p, v, true); p += 8; }
+      function ifd(tag, type, count, val) {
+        u16(tag); u16(type); u32(count);
+        if (type === 3 && count === 1) { u16(val); u16(0); }
+        else { u32(val); }
+      }
+
+      // ── TIFF Header ──
+      u16(0x4949);      // Little-endian
+      u16(42);          // TIFF magic
+      u32(ifdOffset);   // Offset to first IFD
+
+      // ── IFD (tags must be in ascending order) ──
+      u16(numEntries);
+      ifd(256,   3, 1, w);            // ImageWidth
+      ifd(257,   3, 1, h);            // ImageLength
+      ifd(258,   3, 3, bpsOff);       // BitsPerSample → offset
+      ifd(259,   3, 1, 1);            // Compression = None
+      ifd(262,   3, 1, 2);            // PhotometricInterpretation = RGB
+      ifd(273,   4, 1, imgOff);       // StripOffsets
+      ifd(277,   3, 1, 3);            // SamplesPerPixel
+      ifd(278,   3, 1, h);            // RowsPerStrip = all rows
+      ifd(279,   4, 1, rgbLen);       // StripByteCounts
+      ifd(33550, 12, 3, pscOff);      // ModelPixelScaleTag
+      ifd(33922, 12, 6, tieOff);      // ModelTiepointTag
+      ifd(34735, 3, 16, gkOff);       // GeoKeyDirectoryTag
+      u32(0); // Next IFD = none
+
+      // ── Extra data ──
+      p = bpsOff;
+      u16(8); u16(8); u16(8);                          // BitsPerSample
+
+      p = pscOff;
+      f64(pixScaleX); f64(pixScaleY); f64(0);           // ModelPixelScale
+
+      p = tieOff;
+      f64(0); f64(0); f64(0);                           // Raster point (0,0,0)
+      f64(tieX); f64(tieY); f64(0);                     // Geographic point
+
+      p = gkOff;                                         // GeoKeyDirectory
+      u16(1); u16(1); u16(0); u16(3);                   // Version, Revision, Minor, NumKeys
+      u16(1024); u16(0); u16(1); u16(2);                // GTModelType = Geographic
+      u16(1025); u16(0); u16(1); u16(1);                // GTRasterType = PixelIsArea
+      u16(2048); u16(0); u16(1); u16(4326);             // GeographicType = WGS 84
+
+      // ── Image data (RGB) ──
+      var rgb = new Uint8Array(buf, imgOff, rgbLen);
+      for (var i = 0, j = 0; i < rgba.length; i += 4, j += 3) {
+        rgb[j]     = rgba[i];
+        rgb[j + 1] = rgba[i + 1];
+        rgb[j + 2] = rgba[i + 2];
+      }
+
+      return new Blob([buf], { type: 'image/tiff' });
+    }
+
+    function exportGeoTIFF() {
+      var status = document.getElementById('export-status');
+      status.textContent = 'Capturing map…';
+
+      captureComposite(status).then(function (canvas) {
+        status.textContent = 'Building GeoTIFF…';
+        var bounds = map.getBounds();
+        var blob = buildGeoTIFF(canvas, bounds);
+        var link = document.createElement('a');
+        link.download = 'map-export.tif';
+        link.href = URL.createObjectURL(blob);
+        link.click();
+        status.textContent = 'Done! Open in QGIS, ArcGIS, Avenza, etc.';
+        setTimeout(function () { status.textContent = ''; }, 4000);
+      }).catch(function (err) {
+        console.error('Export error:', err);
+        alert('Export failed — some layers may block cross-origin capture.');
+        status.textContent = '';
+      });
+    }
+
+    function exportPNG() {
+      var status = document.getElementById('export-status');
+      status.textContent = 'Capturing map…';
+
+      captureComposite(status).then(function (canvas) {
+        var link = document.createElement('a');
+        link.download = 'map-export.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        status.textContent = 'Done!';
+        setTimeout(function () { status.textContent = ''; }, 3000);
+      }).catch(function (err) {
+        console.error('Export error:', err);
+        alert('Export failed — some layers may block cross-origin capture.');
+        status.textContent = '';
+      });
+    }
+
+    // ==================================================================
+    //  LEGEND SYMBOLS IN LAYER CONTROL
+    // ==================================================================
+    var legendDefs = {
+      'Esri Imagery':       { type: 'swatch', color: '#667', border: '#444', label: '🛰' },
+      'Hillshade':          { type: 'swatch', color: '#c8c0b8', border: '#999' },
+      'Land Cover':         { type: 'swatch', color: '#8db360', border: '#6a9a40' },
+      'Hydrography':        { type: 'swatch', color: '#78a5cd', border: '#5a8ab8' },
+      'Crown Land':         { type: 'swatch', color: '#8cbe6e', border: '#6a9a4e' },
+      'Wildlife Refuges':   { type: 'swatch', color: '#4c7300', border: '#385a00' },
+      'National Parks':     { type: 'swatch', color: '#385a00', border: '#284600' },
+      'Provincial Parks':   { type: 'swatch', color: '#4c7300', border: '#385a00' },
+      'City Parks':         { type: 'swatch', color: '#90c75e', border: '#64a03c' },
+      'Counties':           { type: 'line', color: '#64412d' },
+      'Parishes':           { type: 'line', color: '#826450', style: 'dashed' },
+      'Contours':           { type: 'line', color: '#a57d4b' },
+      'Railway':            { type: 'line', color: '#323232' },
+      'Road Casing':        { type: 'line', color: '#b2b2b2' },
+      'Roads':              { type: 'line', color: '#e64c00' },
+      'Parcels':            { type: 'line', color: '#b2b2b2', style: 'thin' },
+      'Buildings':          { type: 'swatch', color: '#a06e46', border: '#825532' },
+      'Hiking Trails':      { type: 'line', color: '#e63946', style: 'dashed' },
+      'Place Names':        { type: 'text' }
+    };
+
+    // Inject legend swatches into the layer control — re-injects after any re-render
+    function injectLegendSwatches() {
+      var labels = document.querySelectorAll('.leaflet-control-layers-overlays label');
+      labels.forEach(function (lbl) {
+        var span = lbl.querySelector('span');
+        if (!span) return;
+        // Skip if already injected
+        if (lbl.querySelector('.legend-swatch, .legend-line')) return;
+        var name = span.textContent.trim();
+        var def = legendDefs[name];
+        if (!def) return;
+        var el;
+        if (def.type === 'swatch') {
+          el = document.createElement('span');
+          el.className = 'legend-swatch';
+          el.style.backgroundColor = def.color;
+          if (def.border) el.style.borderColor = def.border;
+        } else if (def.type === 'line') {
+          el = document.createElement('span');
+          el.className = 'legend-line';
+          el.style.backgroundColor = def.color;
+          if (def.style === 'dashed') { el.style.backgroundImage = 'repeating-linear-gradient(90deg,' + def.color + ' 0 4px, transparent 4px 7px)'; el.style.backgroundColor = 'transparent'; }
+          if (def.style === 'thin') el.style.height = '1px';
+        } else if (def.type === 'text') {
+          el = document.createElement('span');
+          el.style.cssText = 'font:bold 10px Calibri;color:#333;width:16px;text-align:center;display:inline-block;';
+          el.textContent = 'Aa';
+        }
+        if (el) {
+          span.parentNode.insertBefore(el, span);
+        }
+      });
+    }
+
+    // Initial injection + MutationObserver to re-inject when layer control re-renders
+    setTimeout(injectLegendSwatches, 800);
+    var layerControlEl = document.querySelector('.leaflet-control-layers-overlays');
+    if (layerControlEl) {
+      new MutationObserver(function () {
+        setTimeout(injectLegendSwatches, 50);
+      }).observe(layerControlEl, { childList: true, subtree: true });
+    }
   </script>
 </body>
 </html>
